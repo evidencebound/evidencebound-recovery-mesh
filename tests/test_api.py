@@ -35,7 +35,8 @@ def test_judge_key_protects_action_and_run_endpoints(monkeypatch) -> None:
     assert health["judge_access_required"] is True
 
     assert client.post("/api/runs").status_code == 401
-    assert client.post("/api/runs", headers={"X-Recovery-Mesh-Judge-Key": "wrong"}).status_code == 401
+    wrong_key = {"X-Recovery-Mesh-Judge-Key": "wrong"}
+    assert client.post("/api/runs", headers=wrong_key).status_code == 401
 
     created = client.post("/api/runs", headers=headers)
     assert created.status_code == 200
@@ -44,7 +45,11 @@ def test_judge_key_protects_action_and_run_endpoints(monkeypatch) -> None:
     assert client.get(f"/api/runs/{run_id}").status_code == 401
     assert client.get(f"/api/runs/{run_id}", headers=headers).status_code == 200
     assert client.post(f"/api/runs/{run_id}/fault/stale_evidence").status_code == 401
-    assert client.post(f"/api/runs/{run_id}/fault/stale_evidence", headers=headers).status_code == 200
+    protected_fault = client.post(
+        f"/api/runs/{run_id}/fault/stale_evidence",
+        headers=headers,
+    )
+    assert protected_fault.status_code == 200
     assert client.post(f"/api/runs/{run_id}/recover", headers=headers).status_code == 200
 
 

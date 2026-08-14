@@ -53,7 +53,10 @@ jobs:
           test "$ACTIVE_ACCOUNT" = "$DEPLOYER_SERVICE_ACCOUNT"
           test "$(gcloud config get-value project 2>/dev/null)" = "$GOOGLE_CLOUD_PROJECT"
           test "$(gcloud run services describe "$RECOVERY_MESH_SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$GOOGLE_CLOUD_RUN_REGION" --format='value(metadata.name)')" = "$RECOVERY_MESH_SERVICE"
-          test "$(gcloud secrets describe recovery-mesh-judge-key --project "$GOOGLE_CLOUD_PROJECT" --format='value(name)')" = "projects/457699623691/secrets/recovery-mesh-judge-key"
+          gcloud secrets versions access 1 \
+            --secret recovery-mesh-judge-key \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            >/dev/null
 
       - name: Deploy and run live acceptance smoke
         run: ./scripts/deploy-cloud-run.sh

@@ -4,6 +4,8 @@ import importlib.util
 
 import pytest
 
+from recovery_mesh.verification import WorkerOutput
+
 
 def test_adk_app_constructs_when_dependency_is_available() -> None:
     if importlib.util.find_spec("google.adk") is None:
@@ -20,3 +22,7 @@ def test_adk_app_constructs_when_dependency_is_available() -> None:
         assert config is not None
         assert config.temperature == 0.0
         assert config.max_output_tokens == 256
+        assert agent.output_schema is WorkerOutput
+        schema = agent.output_schema.model_json_schema()
+        assert schema["required"] == ["claim", "evidence_ids", "confidence"]
+        assert schema["additionalProperties"] is False

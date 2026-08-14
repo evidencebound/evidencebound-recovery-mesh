@@ -7,6 +7,7 @@ EXPECTED_PROJECT_ID="${RECOVERY_MESH_EXPECTED_PROJECT_ID:-evidencebound-rm-c977c
 EXPECTED_PROJECT_NUMBER="${RECOVERY_MESH_EXPECTED_PROJECT_NUMBER:-457699623691}"
 POOL_ID="${RECOVERY_MESH_WIF_POOL:-github-actions}"
 PROVIDER_ID="${RECOVERY_MESH_WIF_PROVIDER:-recovery-mesh}"
+PROVIDER_DISPLAY_NAME="${RECOVERY_MESH_WIF_PROVIDER_DISPLAY_NAME:-Recovery Mesh deploy}"
 DEPLOYER_SA_NAME="${RECOVERY_MESH_DEPLOYER_SA:-recovery-mesh-deployer}"
 RUNTIME_SA_NAME="${RECOVERY_MESH_RUNTIME_SA:-recovery-mesh-runtime}"
 BUILD_SA_NAME="${RECOVERY_MESH_BUILD_SA:-recovery-mesh-build}"
@@ -20,6 +21,10 @@ REPO_OWNER="${REPO%%/*}"
 
 [ "$PROJECT_ID" = "$EXPECTED_PROJECT_ID" ] || {
   echo "BLOCKER=unexpected project id: $PROJECT_ID" >&2
+  exit 2
+}
+[ "${#PROVIDER_DISPLAY_NAME}" -le 32 ] || {
+  echo "BLOCKER=deploy workload identity provider display name exceeds 32 characters" >&2
   exit 2
 }
 
@@ -111,7 +116,7 @@ if ! gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
     --project "$PROJECT_ID" \
     --location=global \
     --workload-identity-pool="$POOL_ID" \
-    --display-name "EvidenceBound Recovery Mesh deploy" \
+    --display-name "$PROVIDER_DISPLAY_NAME" \
     --issuer-uri="https://token.actions.githubusercontent.com/" \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref" \
     --attribute-condition="assertion.repository_id=='${REPO_ID}' && assertion.repository_owner=='${REPO_OWNER}' && assertion.ref=='refs/heads/main'"

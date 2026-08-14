@@ -1,0 +1,214 @@
+name: gcp-policy-audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/gcp-policy-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Read-only VPC SC, ancestry, org-policy, and Cloud Run audit
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          PROJECT="$GOOGLE_CLOUD_PROJECT"
+          REGION="$GOOGLE_CLOUD_RUN_REGION"
+          SERVICE="$RECOVERY_MESH_SERVICE"
+
+          probe() {
+            local label="$1"
+            shift
+            echo "===== PROBE:${label} ====="
+            set +e
+            "$@" 2>&1
+            local rc=$?
+            set -e
+            echo "PROBE_RC:${label}=${rc}"
+            echo
+            return 0
+          }
+
+          echo "AUDIT_MODE=READ_ONLY"
+          echo "PROJECT=${PROJECT}"
+          echo "REGION=${REGION}"
+          echo "SERVICE=${SERVICE}"
+
+          probe active_identity gcloud auth list --filter=status:ACTIVE --format='value(account)'
+          probe project_describe gcloud projects describe "$PROJECT" --format='yaml(projectId,projectNumber,parent,labels,lifecycleState)'
+          probe project_ancestry gcloud projects get-ancestors "$PROJECT" --format='yaml(id,type)'
+
+          probe org_policy_allowed_ingress gcloud org-policies describe run.allowedIngress --project="$PROJECT" --effective --format=yaml
+          probe org_policy_allowed_vpc_egress gcloud org-policies describe run.allowedVPCEgress --project="$PROJECT" --effective --format=yaml
+          probe org_policy_require_invoker_iam gcloud org-policies describe run.managed.requireInvokerIam --project="$PROJECT" --effective --format=yaml
+          probe org_policy_set_on_project gcloud org-policies list --project="$PROJECT" --format='table(constraint,etag)'
+
+          echo "===== PROBE:cloud_run_service_metadata ====="
+          set +e
+          gcloud run services describe "$SERVICE" \
+            --project="$PROJECT" \
+            --region="$REGION" \
+            --format='yaml(metadata.name,metadata.labels,metadata.annotations,spec.template.metadata.annotations,spec.template.spec.serviceAccountName,status.url,status.address,status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' 2>&1
+          SERVICE_RC=$?
+          set -e
+          echo "PROBE_RC:cloud_run_service_metadata=${SERVICE_RC}"
+          echo
+
+          REVISION="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
+          SERVICE_URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format='value(status.url)' 2>/dev/null || true)"
+          echo "LATEST_READY_REVISION=${REVISION}"
+          echo "SERVICE_URL=${SERVICE_URL}"
+
+          if [ -n "$REVISION" ]; then
+            probe cloud_run_revision_metadata gcloud run revisions describe "$REVISION" \
+              --project="$PROJECT" \
+              --region="$REGION" \
+              --format='yaml(metadata.name,metadata.labels,metadata.annotations,spec.serviceAccountName,spec.containers.image,status.conditions)'
+          fi
+
+          probe cloud_run_service_iam gcloud run services get-iam-policy "$SERVICE" \
+            --project="$PROJECT" \
+            --region="$REGION" \
+            --format=yaml
+
+          echo "===== PROBE:vpc_sc_http_ingress_policy_logs ====="
+          set +e
+          gcloud logging read \
+            'resource.type="audited_resource" AND logName="projects/'"$PROJECT"'/logs/cloudaudit.googleapis.com%2Fpolicy" AND resource.labels.method="run.googleapis.com/HttpIngress"' \
+            --project="$PROJECT" \
+            --freshness=24h \
+            --limit=50 \
+            --format='yaml(timestamp,severity,protoPayload.status,protoPayload.authenticationInfo.principalEmail,protoPayload.metadata,resource.labels)' 2>&1
+          POLICY_LOG_RC=$?
+          set -e
+          echo "PROBE_RC:vpc_sc_http_ingress_policy_logs=${POLICY_LOG_RC}"
+          echo
+
+          if [ -n "$SERVICE_URL" ]; then
+            HOST="${SERVICE_URL#https://}"
+            HOST="${HOST%%/*}"
+            probe service_dns getent ahosts "$HOST"
+
+            echo "===== PROBE:public_health ====="
+            set +e
+            curl --silent --show-error --location \
+              --dump-header /tmp/public-health.headers \
+              --output /tmp/public-health.body \
+              --write-out 'HTTP_STATUS=%{http_code}\nREMOTE_IP=%{remote_ip}\nURL_EFFECTIVE=%{url_effective}\n' \
+              "${SERVICE_URL}/healthz"
+            PUBLIC_RC=$?
+            set -e
+            echo "CURL_RC=${PUBLIC_RC}"
+            echo "--- headers ---"
+            sed -n '1,80p' /tmp/public-health.headers 2>/dev/null || true
+            echo "--- body ---"
+            sed -n '1,120p' /tmp/public-health.body 2>/dev/null || true
+            echo "PROBE_RC:public_health=${PUBLIC_RC}"
+            echo
+
+            echo "===== PROBE:authenticated_health ====="
+            set +e
+            ID_TOKEN="$(gcloud auth print-identity-token --audiences="$SERVICE_URL" 2>/tmp/id-token.err)"
+            TOKEN_RC=$?
+            set -e
+            echo "ID_TOKEN_RC=${TOKEN_RC}"
+            if [ "$TOKEN_RC" -ne 0 ]; then
+              sed -n '1,80p' /tmp/id-token.err || true
+            elif [ -n "$ID_TOKEN" ]; then
+              set +e
+              curl --silent --show-error --location \
+                --header "Authorization: Bearer ${ID_TOKEN}" \
+                --dump-header /tmp/auth-health.headers \
+                --output /tmp/auth-health.body \
+                --write-out 'HTTP_STATUS=%{http_code}\nREMOTE_IP=%{remote_ip}\nURL_EFFECTIVE=%{url_effective}\n' \
+                "${SERVICE_URL}/healthz"
+              AUTH_RC=$?
+              set -e
+              echo "CURL_RC=${AUTH_RC}"
+              echo "--- headers ---"
+              sed -n '1,80p' /tmp/auth-health.headers 2>/dev/null || true
+              echo "--- body ---"
+              sed -n '1,120p' /tmp/auth-health.body 2>/dev/null || true
+              echo "PROBE_RC:authenticated_health=${AUTH_RC}"
+            fi
+            unset ID_TOKEN || true
+          fi
+
+          echo "===== PROBE:access_context_manager ====="
+          set +e
+          ANCESTRY="$(gcloud projects get-ancestors "$PROJECT" --format='csv[no-heading](id,type)' 2>/dev/null)"
+          ANCESTRY_RC=$?
+          set -e
+          echo "ANCESTRY_RC=${ANCESTRY_RC}"
+          printf '%s\n' "$ANCESTRY"
+          ORG_ID="$(printf '%s\n' "$ANCESTRY" | awk -F',' '$2=="organization" {print $1; exit}')"
+          echo "ORG_ID=${ORG_ID:-NONE}"
+
+          if [ -n "$ORG_ID" ]; then
+            probe access_policies gcloud access-context-manager policies list \
+              --organization="$ORG_ID" \
+              --format='yaml(name,parent,title,scopes)'
+
+            echo "===== PROBE:vpc_service_perimeters ====="
+            set +e
+            POLICIES="$(gcloud access-context-manager policies list --organization="$ORG_ID" --format='value(name)' 2>/tmp/access-policies.err)"
+            POLICIES_RC=$?
+            set -e
+            echo "POLICIES_RC=${POLICIES_RC}"
+            if [ "$POLICIES_RC" -ne 0 ]; then
+              sed -n '1,120p' /tmp/access-policies.err || true
+            else
+              if [ -z "$POLICIES" ]; then
+                echo "VPC_SC_ACCESS_POLICIES=NONE"
+              fi
+              while IFS= read -r POLICY_NAME; do
+                [ -n "$POLICY_NAME" ] || continue
+                POLICY_ID="${POLICY_NAME##*/}"
+                echo "ACCESS_POLICY=${POLICY_NAME}"
+                gcloud access-context-manager perimeters list \
+                  --policy="$POLICY_ID" \
+                  --format='yaml(name,title,status.resources,status.restrictedServices,status.ingressPolicies,status.egressPolicies,spec.resources,spec.restrictedServices)' 2>&1 || true
+              done <<< "$POLICIES"
+            fi
+            echo "PROBE_RC:vpc_service_perimeters=0"
+            echo
+
+            probe org_custom_constraints gcloud org-policies list-custom-constraints \
+              --organization="$ORG_ID" \
+              --format='yaml(name,displayName,resourceTypes,methodTypes,condition,actionType)'
+          else
+            echo "VPC_SC_ORG_SCOPE=ABSENT"
+            echo "VPC_SC_CONCLUSION=No organization ancestor was visible to this identity; organization-scoped VPC Service Controls cannot be confirmed from Access Context Manager."
+          fi
+
+          echo "AUDIT_COMPLETE=TRUE"

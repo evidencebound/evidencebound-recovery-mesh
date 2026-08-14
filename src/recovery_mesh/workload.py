@@ -74,6 +74,9 @@ def build_agent_prompt(checkpoint_id: str, outputs: Mapping[str, Any]) -> str:
         f"Checkpoint: {checkpoint_id}\n"
         "Use only the bounded JSON inputs below. Do not infer external facts.\n"
         "Return exactly one compact JSON object; no markdown.\n"
+        f"DEPENDENCY_CHECKPOINT_IDS={json.dumps(list(dependencies), separators=(',', ':'))}\n"
+        "For evidence_ids, cite only those dependency checkpoint IDs; never cite nested raw "
+        "field values such as fixture_id or window.\n"
         f"INPUTS={json.dumps(bounded_inputs, sort_keys=True, separators=(',', ':'))}"
     )
 

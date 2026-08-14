@@ -37,7 +37,7 @@ printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 
 printf '\n=== LIVE HEALTH ===\n'
-curl --fail --silent --show-error "${SERVICE_URL}/healthz" | python -m json.tool
+curl --fail --silent --show-error "${SERVICE_URL}/health" | python -m json.tool
 
 printf '\n=== RECENT CLOUD RUN REQUEST RECEIPTS ===\n'
 gcloud logging read \

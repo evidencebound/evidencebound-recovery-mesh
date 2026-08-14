@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Any
 
 from .graph import TrustGraph
@@ -44,33 +45,35 @@ class SideEffectReceipt:
 
 
 class SideEffectLedger:
-    """Process-local exactly-once demo ledger; durable store is a deployment concern."""
+    """Thread-safe process-local exactly-once demo ledger; durable store is deployment work."""
 
     def __init__(self) -> None:
         self._receipts: dict[str, SideEffectReceipt] = {}
+        self._lock = Lock()
 
     def commit(self, key: str, payload: Any) -> SideEffectReceipt:
         digest = sha256_digest(payload)
-        existing = self._receipts.get(key)
-        if existing is not None:
-            if existing.payload_digest != digest:
-                raise RecoveryInvariantError(
-                    "idempotency key already committed with a different payload"
+        with self._lock:
+            existing = self._receipts.get(key)
+            if existing is not None:
+                if existing.payload_digest != digest:
+                    raise RecoveryInvariantError(
+                        "idempotency key already committed with a different payload"
+                    )
+                return SideEffectReceipt(
+                    side_effect_key=key,
+                    payload_digest=digest,
+                    committed_at=existing.committed_at,
+                    duplicate_suppressed=True,
                 )
-            return SideEffectReceipt(
+            receipt = SideEffectReceipt(
                 side_effect_key=key,
                 payload_digest=digest,
-                committed_at=existing.committed_at,
-                duplicate_suppressed=True,
+                committed_at=datetime.now(UTC),
+                duplicate_suppressed=False,
             )
-        receipt = SideEffectReceipt(
-            side_effect_key=key,
-            payload_digest=digest,
-            committed_at=datetime.now(UTC),
-            duplicate_suppressed=False,
-        )
-        self._receipts[key] = receipt
-        return receipt
+            self._receipts[key] = receipt
+            return receipt
 
 
 class RecoveryEngine:

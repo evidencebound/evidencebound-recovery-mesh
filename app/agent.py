@@ -49,7 +49,9 @@ def _generation_config(*, agent_id: str | None = None) -> types.GenerateContentC
         # decisions after generation.
         return types.GenerateContentConfig(
             max_output_tokens=256,
-            thinking_config=types.ThinkingConfig(thinking_level="minimal"),
+            thinking_config=types.ThinkingConfig(
+                thinking_level=types.ThinkingLevel.MINIMAL,
+            ),
             response_mime_type="application/json",
             response_json_schema=_worker_output_schema(agent_id),
         )

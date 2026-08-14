@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import json
 
 from recovery_mesh.scale_probe import run_scale_probe

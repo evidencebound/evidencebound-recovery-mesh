@@ -1,0 +1,94 @@
+name: gcp-genai-schema-trace
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/gcp-genai-schema-trace.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_LOCATION: global
+  GOOGLE_GENAI_USE_VERTEXAI: "TRUE"
+  RECOVERY_MESH_MODEL: gemini-3.5-flash
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install .
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Call Gemini directly with the exact Recovery Mesh worker schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+
+          from google import genai
+          from google.genai import types
+
+          from app.agent import build_execution_agent
+          from recovery_mesh.verification import WorkerOutput
+          from recovery_mesh.workload import baseline_source_outputs, build_agent_prompt
+
+          model = os.environ["RECOVERY_MESH_MODEL"]
+          client = genai.Client(
+              vertexai=True,
+              project=os.environ["GOOGLE_CLOUD_PROJECT"],
+              location=os.environ["GOOGLE_CLOUD_LOCATION"],
+          )
+          agent = build_execution_agent("statistician", model_name=model)
+          prompt = build_agent_prompt("statistician", baseline_source_outputs())
+          response = client.models.generate_content(
+              model=model,
+              contents=prompt,
+              config=types.GenerateContentConfig(
+                  system_instruction=agent.instruction,
+                  temperature=0.0,
+                  max_output_tokens=256,
+                  response_mime_type="application/json",
+                  response_json_schema=WorkerOutput.model_json_schema(),
+              ),
+          )
+          text = (response.text or "").strip()
+          print("GENAI_TEXT_PREFIX=" + text[:600].replace("\n", " "))
+          print("GENAI_HAS_TEXT=" + str(bool(text)).lower())
+          try:
+              payload = json.loads(text)
+              worker = WorkerOutput.model_validate(payload)
+          except Exception as exc:
+              print("GENAI_SCHEMA_VALID=FALSE")
+              print("GENAI_SCHEMA_ERROR=" + type(exc).__name__ + ": " + str(exc)[:600].replace("\n", " "))
+              raise
+          print("GENAI_SCHEMA_VALID=TRUE")
+          print("GENAI_EVIDENCE_IDS=" + json.dumps(worker.evidence_ids, separators=(",", ":")))
+          print("GENAI_CONFIDENCE=" + str(worker.confidence))
+          usage = getattr(response, "usage_metadata", None)
+          if usage is not None:
+              print("GENAI_USAGE=" + json.dumps(usage.model_dump(exclude_none=True), sort_keys=True, separators=(",", ":"), default=str))
+          PY
+          echo 'CLOUD_RUN_MUTATIONS=NONE'
+          echo 'BUILD_OR_DEPLOY=NONE'

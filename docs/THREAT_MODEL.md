@@ -48,7 +48,21 @@ Recovery Mesh treats every model/tool/evidence checkpoint as potentially invalid
 | Agent attempts to override trust | model says it is safe/verified | Gemini/ADK cannot set deterministic trust state or bypass action gate | claim has no authority; gate follows verifier/graph state only |
 | Google credential leakage | long-lived deployment secret is exposed | no service-account key; Workload Identity Federation for GitHub deploys; secret scan; generated auth files ignored | revoke/bound WIF/IAM without rotating embedded keys |
 | Wrong-project deployment | operator shell points at unrelated project | bootstrap pins project ID, project number, hackathon label, ACTIVE state, billing | exits with `BLOCKER` before API/IAM mutation |
-| Unbounded cost/runtime | runaway demo deployment | Cloud Run `min=0`, `max=1`, bounded four-agent judge flow, no 100-live-agent scale test | scale proof uses deterministic synthetic checkpoints instead of paid 100-agent calls |
+| Stray/public traffic consumes model calls | public judge endpoint is repeatedly invoked | live Google executor shares a process-local atomic model-call budget; deployment default is 64 reservations per process | once exhausted, provider invocation is rejected before the call; current or new workflow fails closed rather than silently falling back |
+| Unbounded cost/runtime | runaway demo deployment | Cloud Run `min=0`, `max=1`, bounded four-agent judge flow, process-local live-call guard, no 100-live-agent scale test | scale proof uses deterministic synthetic checkpoints instead of paid 100-agent calls |
+
+## Live model-call guard semantics
+
+`RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET` defaults to `64` for the Cloud Run deployment. Every live Google agent checkpoint reserves one unit immediately before the provider invocation. Reservation is protected by a process-local lock, so concurrent requests cannot oversubscribe a single process budget.
+
+This guard is intentionally described as a **process-local invocation bound**, not a billing limit:
+
+- it resets if Cloud Run starts a new process/revision;
+- a failed provider call still consumes its reservation, which is the safer fail-closed behavior;
+- it does not predict or cap token usage or currency spend;
+- it does not replace Cloud Billing budgets/alerts or account-level controls.
+
+The bound is meant to reduce accidental/stray demo traffic while leaving enough headroom for repeated judge and recording flows.
 
 ## Controlled-fault policy
 
@@ -66,6 +80,7 @@ Controlled faults are allowed only when all of these are true:
 - No claim that Gemini, ADK, Model Armor, Memory Bank, or another Google service detected a failure unless a real invocation proves it.
 - No claim that persisted memory is immutable or inherently trusted.
 - The public judge deployment uses bounded demo data and is not a general arbitrary-tool execution endpoint.
+- The process-local model-call budget is not a hard financial spending cap.
 - Enterprise Agent Platform add-ons remain out of the claimed architecture until entitlement and actual integration are verified.
 - Production Google Cloud security acceptance remains pending until the live bootstrap and hosted smoke test succeed.
 
@@ -79,4 +94,5 @@ Before final submission, retain receipts for:
 4. runtime service account identity shown on Cloud Run revision;
 5. stale-evidence action gate BLOCKED before recovery;
 6. idempotency/replay tests PASS;
-7. live Google execution fails closed rather than silently using deterministic output.
+7. live Google execution fails closed rather than silently using deterministic output;
+8. process-local live model-call budget regression test PASS.

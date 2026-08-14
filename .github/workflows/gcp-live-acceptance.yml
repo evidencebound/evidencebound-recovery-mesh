@@ -1,0 +1,88 @@
+name: gcp-live-acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/live-acceptance.trigger
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  DEPLOY_WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+  AUDIT_WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh-audit
+  AUDITOR_SERVICE_ACCOUNT: recovery-mesh-auditor@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  live-judge-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: deployer-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.DEPLOY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Run protected judge acceptance against current revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE_URL="$(gcloud run services describe "$RECOVERY_MESH_SERVICE" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --region "$GOOGLE_CLOUD_RUN_REGION" \
+            --format='value(status.url)')"
+          REVISION="$(gcloud run services describe "$RECOVERY_MESH_SERVICE" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --region "$GOOGLE_CLOUD_RUN_REGION" \
+            --format='value(status.latestReadyRevisionName)')"
+          printf 'LIVE_ACCEPTANCE_SERVICE_URL=%s\n' "$SERVICE_URL"
+          printf 'LIVE_ACCEPTANCE_REVISION=%s\n' "$REVISION"
+
+          export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(gcloud secrets versions access 1 \
+            --secret recovery-mesh-judge-key \
+            --project "$GOOGLE_CLOUD_PROJECT")"
+          [ -n "$RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE" ] || {
+            echo 'BLOCKER=judge key unavailable for live acceptance' >&2
+            exit 4
+          }
+          echo "::add-mask::${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE}"
+          ./scripts/smoke-cloud-run.sh "$SERVICE_URL"
+          unset RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE
+          printf 'LIVE_JUDGE_ACCEPTANCE=PASS\n'
+          printf 'CLOUD_RUN_MUTATIONS=NONE\n'
+          printf 'BUILD_OR_DEPLOY=NONE\n'
+
+  cloud-proof:
+    needs: live-judge-flow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: auditor-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.AUDIT_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.AUDITOR_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Capture Google Cloud proof receipt
+        run: ./scripts/gcp-proof-receipt.sh

@@ -16,7 +16,7 @@ class GoogleAdkExecutor:
     is_live_google = True
 
     def __init__(self, model_name: str | None = None) -> None:
-        self.model_name = model_name or os.getenv("RECOVERY_MESH_MODEL", "gemini-3.5-flash")
+        self.model_name: str = model_name or os.getenv("RECOVERY_MESH_MODEL", "gemini-3.5-flash")
 
     def execute(
         self,

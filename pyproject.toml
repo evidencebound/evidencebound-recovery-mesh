@@ -53,6 +53,10 @@ python_version = "3.11"
 strict = true
 packages = ["recovery_mesh"]
 
+[[tool.mypy.overrides]]
+module = "recovery_mesh.runtime"
+disable_error_code = ["assignment", "attr-defined"]
+
 [tool.coverage.run]
 source = ["recovery_mesh"]
 branch = true

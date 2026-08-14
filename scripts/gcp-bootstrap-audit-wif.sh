@@ -12,10 +12,20 @@ AUDITOR_SA="${AUDITOR_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 REPO="${RECOVERY_MESH_GITHUB_REPOSITORY:-moneyparking/evidencebound-recovery-mesh}"
 REPO_ID="${RECOVERY_MESH_GITHUB_REPOSITORY_ID:-1334014784}"
 REPO_OWNER="${REPO%%/*}"
+READINESS_ATTEMPTS="${RECOVERY_MESH_WIF_READINESS_ATTEMPTS:-12}"
+READINESS_SLEEP_SECONDS="${RECOVERY_MESH_WIF_READINESS_SLEEP_SECONDS:-5}"
 
 [ "$PROJECT_ID" = "$EXPECTED_PROJECT_ID" ] || {
   echo "BLOCKER=unexpected project id: $PROJECT_ID" >&2
   exit 2
+}
+[[ "$READINESS_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || {
+  echo "BLOCKER=RECOVERY_MESH_WIF_READINESS_ATTEMPTS must be a positive integer" >&2
+  exit 7
+}
+[[ "$READINESS_SLEEP_SECONDS" =~ ^[0-9]+$ ]] || {
+  echo "BLOCKER=RECOVERY_MESH_WIF_READINESS_SLEEP_SECONDS must be a non-negative integer" >&2
+  exit 8
 }
 
 ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
@@ -67,12 +77,26 @@ if ! gcloud iam workload-identity-pools describe "$POOL_ID" \
     --description "Keyless GitHub Actions identities for EvidenceBound Recovery Mesh"
 fi
 
-POOL_STATE="$(gcloud iam workload-identity-pools describe "$POOL_ID" \
-  --project "$PROJECT_ID" \
-  --location=global \
-  --format='value(state)' 2>/dev/null || true)"
-[ "$POOL_STATE" != "DELETED" ] || {
-  echo "BLOCKER=workload identity pool is deleted; restore it deliberately before audit" >&2
+POOL_STATE=""
+for ATTEMPT in $(seq 1 "$READINESS_ATTEMPTS"); do
+  POOL_STATE="$(gcloud iam workload-identity-pools describe "$POOL_ID" \
+    --project "$PROJECT_ID" \
+    --location=global \
+    --format='value(state)' 2>/dev/null || true)"
+  printf 'AUDIT_WIF_POOL_READINESS attempt=%s state=%s\n' "$ATTEMPT" "${POOL_STATE:-UNKNOWN}"
+  if [ "$POOL_STATE" = "ACTIVE" ]; then
+    break
+  fi
+  [ "$POOL_STATE" != "DELETED" ] || {
+    echo "BLOCKER=workload identity pool is deleted; restore it deliberately before audit" >&2
+    exit 5
+  }
+  if [ "$ATTEMPT" -lt "$READINESS_ATTEMPTS" ]; then
+    sleep "$READINESS_SLEEP_SECONDS"
+  fi
+done
+[ "$POOL_STATE" = "ACTIVE" ] || {
+  echo "BLOCKER=workload identity pool did not become ACTIVE: ${POOL_STATE:-UNKNOWN}" >&2
   exit 5
 }
 
@@ -90,15 +114,48 @@ if ! gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
     --attribute-condition="assertion.repository_id=='${REPO_ID}' && assertion.repository_owner=='${REPO_OWNER}' && assertion.ref=='refs/heads/main'"
 fi
 
-PROVIDER_STATE="$(gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
+PROVIDER_STATE=""
+PROVIDER_DISABLED=""
+for ATTEMPT in $(seq 1 "$READINESS_ATTEMPTS"); do
+  PROVIDER_STATE="$(gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
+    --project "$PROJECT_ID" \
+    --location=global \
+    --workload-identity-pool="$POOL_ID" \
+    --format='value(state)' 2>/dev/null || true)"
+  PROVIDER_DISABLED="$(gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
+    --project "$PROJECT_ID" \
+    --location=global \
+    --workload-identity-pool="$POOL_ID" \
+    --format='value(disabled)' 2>/dev/null || true)"
+  printf 'AUDIT_WIF_PROVIDER_READINESS attempt=%s state=%s disabled=%s\n' \
+    "$ATTEMPT" "${PROVIDER_STATE:-UNKNOWN}" "${PROVIDER_DISABLED:-false}"
+  case "$PROVIDER_DISABLED" in
+    True|true|TRUE|1)
+      echo "BLOCKER=audit workload identity provider is disabled" >&2
+      exit 6
+      ;;
+  esac
+  if [ "$PROVIDER_STATE" = "ACTIVE" ]; then
+    break
+  fi
+  [ "$PROVIDER_STATE" != "DELETED" ] || {
+    echo "BLOCKER=audit workload identity provider is deleted; restore it deliberately before audit" >&2
+    exit 6
+  }
+  if [ "$ATTEMPT" -lt "$READINESS_ATTEMPTS" ]; then
+    sleep "$READINESS_SLEEP_SECONDS"
+  fi
+done
+[ "$PROVIDER_STATE" = "ACTIVE" ] || {
+  echo "BLOCKER=audit workload identity provider did not become ACTIVE: ${PROVIDER_STATE:-UNKNOWN}" >&2
+  exit 6
+}
+
+gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" \
   --project "$PROJECT_ID" \
   --location=global \
   --workload-identity-pool="$POOL_ID" \
-  --format='value(state)' 2>/dev/null || true)"
-[ "$PROVIDER_STATE" = "ACTIVE" ] || {
-  echo "BLOCKER=audit workload identity provider is not ACTIVE: ${PROVIDER_STATE:-UNKNOWN}" >&2
-  exit 6
-}
+  --format='yaml(name,state,disabled,oidc.issuerUri,attributeMapping,attributeCondition)'
 
 WIF_MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository_id/${REPO_ID}"
 gcloud iam service-accounts add-iam-policy-binding "$AUDITOR_SA" \

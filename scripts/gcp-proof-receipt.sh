@@ -21,7 +21,8 @@ PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(project
   exit 4
 }
 
-SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"
+SERVICE_URL="https://${SERVICE}-${PROJECT_NUMBER}.${RUN_REGION}.run.app"
+STATUS_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"
 REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
 RUNTIME_SA="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(spec.template.spec.serviceAccountName)')"
 
@@ -31,6 +32,7 @@ printf 'PROJECT_NUMBER=%s\n' "$PROJECT_NUMBER"
 printf 'CLOUD_RUN_REGION=%s\n' "$RUN_REGION"
 printf 'SERVICE_NAME=%s\n' "$SERVICE"
 printf 'SERVICE_URL=%s\n' "$SERVICE_URL"
+printf 'SERVICE_STATUS_URL=%s\n' "$STATUS_URL"
 printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 

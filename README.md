@@ -18,6 +18,9 @@ TRUST BREAK
   -> VERIFIED RECOVERY
 ```
 
+The Flight Recorder UI renders this exact six-step proof sequence from runtime state; it is not
+a staged screenshot or a separate demo-only state machine.
+
 ## Core invariant
 
 **Persisted memory is not automatically trusted memory.**
@@ -30,6 +33,15 @@ or side-effect gates.
 This is a new, isolated Google All Things Agentic Hackathon 2026 project. No SignalReview
 production source or prior EvidenceBound implementation source is copied into this repository.
 See [`PREEXISTING_WORK.md`](PREEXISTING_WORK.md) for the disclosure and clean-room boundary.
+
+## Judge evidence map
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — canonical architecture source and trust-authority boundary.
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Fortified fleet threats, controls, and explicit non-claims.
+- [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — production acceptance gates that must be proven before final submission.
+- [`docs/DEVPOST_SUBMISSION_MATRIX.md`](docs/DEVPOST_SUBMISSION_MATRIX.md) — field-by-field evidence state.
+- [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — <=4 minute recording plan; it is not evidence by itself.
+- [`docs/OWNER_RETURN_RUNBOOK.md`](docs/OWNER_RETURN_RUNBOOK.md) — isolated Google Cloud first-bootstrap runbook.
 
 ## Architecture
 
@@ -136,8 +148,9 @@ calls are necessary or cost-effective.
 PYTHONPATH=src python scripts/benchmark-scale.py
 ```
 
-The receipt is explicitly labeled `deterministic_synthetic_scale_probe`; it is not evidence of
-100 live Gemini invocations.
+The CI locks the controlled scale receipt to **100 agent checkpoints / 14 affected / 86 reused /
+1 blocked action**. The receipt is explicitly labeled `deterministic_synthetic_scale_probe`;
+it is not evidence of 100 live Gemini invocations.
 
 ## Measured recovery economics
 
@@ -155,15 +168,18 @@ shown in the UI is explicitly scoped to that controlled run; no general savings 
 
 ```bash
 python -m pytest --cov=recovery_mesh --cov-branch --cov-report=term-missing
-python -m py_compile app/agent.py src/recovery_mesh/*.py
+python -m py_compile app/agent.py src/recovery_mesh/*.py scripts/benchmark-scale.py
 bash -n scripts/gcp-owner-bootstrap.sh scripts/gcp-live-preflight.sh scripts/deploy-cloud-run.sh scripts/smoke-cloud-run.sh
+node --check static/app.js
+PYTHONPATH=src python scripts/benchmark-scale.py
 ```
 
 `src/recovery_mesh/google_adk.py` is intentionally excluded from credential-free unit coverage;
 it is owned by the live ADK/Gemini integration gate. A local core PASS is not a Google
 integration PASS.
 
-The full CI also runs Ruff, mypy, secret scanning, and a Docker build.
+The full CI also runs Ruff, mypy, secret scanning, exact scale-receipt assertions, and a Docker
+build.
 
 ## Run the local Flight Recorder
 
@@ -182,32 +198,46 @@ These query parameters call the real API/runtime; they do not fabricate UI state
 
 ## Cloud Run deployment
 
-Prerequisites are intentionally not hidden: a Google Cloud project with billing, required
-permissions, Application Default Credentials / deploy authentication, and access to the
-configured Gemini model.
+The isolated hackathon deployment target is:
+
+```text
+Project ID: evidencebound-rm-c977c1
+Project number: 457699623691
+Cloud Run region: europe-west1
+Vertex location: global
+Model target: gemini-3.5-flash
+```
+
+Billing and authenticated owner bootstrap are explicit prerequisites. The bootstrap fails closed
+before API/IAM mutation unless the exact project ID, project number, `hackathon` label, ACTIVE
+lifecycle state, and enabled billing match the isolated target.
 
 For the first deployment, run the owner bootstrap once from an authenticated Google Cloud
 Shell. It performs live Gemini preflight, creates separate least-privilege runtime/build
-identities, makes the judge service public once, deploys the bounded Cloud Run service, and
-creates keyless GitHub Workload Identity Federation restricted to this repository and `main`
-branch. No service-account key is created or exported.
+identities, makes the judge service public once, deploys the bounded Cloud Run service, runs the
+live acceptance smoke, and creates keyless GitHub Workload Identity Federation restricted to
+this repository ID, owner, and `main` branch. No service-account key is created or exported.
 
 ```bash
-export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
 export GOOGLE_CLOUD_RUN_REGION=europe-west1
 export GOOGLE_CLOUD_LOCATION=global
 export RECOVERY_MESH_MODEL=gemini-3.5-flash
 ./scripts/gcp-owner-bootstrap.sh
 ```
 
-Subsequent authorized deployments use `./scripts/deploy-cloud-run.sh`; recurring deploy
-credentials do not receive permission to enable APIs, mutate project IAM, or change public
-access. Source builds run as the dedicated `recovery-mesh-build` identity and revisions run as
-the separate `recovery-mesh-runtime` identity. The deployment is bounded to `min=0`, `max=1`,
-one CPU and 512 MiB. Every deploy first performs a real Gemini
-call and then runs the end-to-end live smoke gate requiring Google ADK receipts, exact
-stale-evidence blast radius, blocked action, preserved Scout checkpoint, selective three-agent
-rerun, and final `VERIFIED` action state.
+After the first bootstrap, `.github/workflows/deploy-cloud-run.yml` provides an explicit manual
+keyless deployment path. Recurring deploy credentials do not receive permission to enable APIs,
+mutate project IAM, or change public access. Source builds run as the dedicated
+`recovery-mesh-build` identity and revisions run as the separate `recovery-mesh-runtime`
+identity.
+
+The deployment is bounded to `min=0`, `max=1`, one CPU and 512 MiB. Every deploy first performs
+a real Gemini call and then runs the end-to-end live smoke gate requiring Google ADK receipts,
+exact stale-evidence blast radius, blocked action, preserved Scout checkpoint, selective
+three-agent rerun, and final `VERIFIED` action state.
+
+Until those real receipts exist, **Cloud Run, hosted judge URL, and live Gemini remain PENDING**.
 
 ## Security and cost posture
 
@@ -216,6 +246,8 @@ rerun, and final `VERIFIED` action state.
 - deterministic fail-closed trust/policy gates;
 - side-effect idempotency keys;
 - no automatic fallback from Google execution to fake/local output;
+- exact-project bootstrap guard before cloud mutation;
+- keyless GitHub deployment design via Workload Identity Federation;
 - Cloud Run scale-to-zero target with max one instance;
 - owner-funded spend is not assumed;
 - extra Gemini Enterprise Agent Platform services are not claimed until entitlement and real
@@ -225,9 +257,11 @@ rerun, and final `VERIFIED` action state.
 
 | Gate | Status semantics |
 |---|---|
-| Deterministic DAG / recovery / API tests | executable local evidence |
-| Google ADK construction | requires installed ADK dependency |
-| Live Gemini / Vertex execution | requires real Google credentials/project |
-| Cloud Run deployment | requires authenticated `gcloud` project access |
+| Deterministic DAG / recovery / API tests | executable local + remote CI evidence |
+| Google ADK construction | remote CI evidence with installed ADK dependency |
+| Synthetic 100-agent scale receipt | deterministic CI evidence, not 100 Gemini calls |
+| Isolated Google Cloud project | created; billing/live runtime still pending |
+| Live Gemini / Vertex execution | requires real Google credentials/project and receipt |
+| Cloud Run deployment | requires authenticated owner bootstrap and smoke receipt |
 | Browser visual acceptance | separate hosted/browser gate |
 | Gemini Enterprise Agent Platform add-ons | not part of the claimed runtime until verified |

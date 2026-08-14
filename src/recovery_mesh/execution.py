@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from threading import Lock
 from time import perf_counter_ns
 from typing import Any, Protocol
 
@@ -49,6 +50,61 @@ class FleetExecutor(Protocol):
         checkpoint_id: str,
         prompt: str,
     ) -> AgentExecutionReceipt: ...
+
+
+class ModelCallBudget:
+    """Process-local live invocation guard; intentionally not a billing/spend cap."""
+
+    def __init__(self, limit: int) -> None:
+        if limit <= 0:
+            raise ValueError("model call budget must be positive")
+        self.limit = limit
+        self._remaining = limit
+        self._lock = Lock()
+
+    @property
+    def remaining(self) -> int:
+        with self._lock:
+            return self._remaining
+
+    def reserve(self) -> None:
+        with self._lock:
+            if self._remaining <= 0:
+                raise AgentExecutionError(
+                    "live model call budget exhausted; request blocked before provider invocation"
+                )
+            self._remaining -= 1
+
+
+class BudgetedExecutor:
+    """Wrap a live executor with a process-local fail-closed invocation budget."""
+
+    def __init__(self, inner: FleetExecutor, budget: ModelCallBudget) -> None:
+        if not inner.is_live_google:
+            raise ValueError("BudgetedExecutor is only for live Google execution")
+        self._inner = inner
+        self._budget = budget
+        self.provider_name = inner.provider_name
+        self.model_name = inner.model_name
+        self.is_live_google = True
+
+    @property
+    def remaining_model_calls(self) -> int:
+        return self._budget.remaining
+
+    def execute(
+        self,
+        *,
+        run_id: str,
+        checkpoint_id: str,
+        prompt: str,
+    ) -> AgentExecutionReceipt:
+        self._budget.reserve()
+        return self._inner.execute(
+            run_id=run_id,
+            checkpoint_id=checkpoint_id,
+            prompt=prompt,
+        )
 
 
 class DeterministicExecutor:
@@ -106,6 +162,30 @@ class DeterministicExecutor:
         )
 
 
+_LIVE_BUDGET: ModelCallBudget | None = None
+_LIVE_BUDGET_LOCK = Lock()
+
+
+def _live_model_call_budget() -> ModelCallBudget:
+    global _LIVE_BUDGET
+    if _LIVE_BUDGET is not None:
+        return _LIVE_BUDGET
+    with _LIVE_BUDGET_LOCK:
+        if _LIVE_BUDGET is None:
+            raw_limit = os.getenv("RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET", "64").strip()
+            try:
+                limit = int(raw_limit)
+            except ValueError as exc:
+                raise ExecutionUnavailable(
+                    "RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET must be a positive integer"
+                ) from exc
+            try:
+                _LIVE_BUDGET = ModelCallBudget(limit)
+            except ValueError as exc:
+                raise ExecutionUnavailable(str(exc)) from exc
+    return _LIVE_BUDGET
+
+
 def executor_from_environment() -> FleetExecutor:
     mode = os.getenv("RECOVERY_MESH_EXECUTION_MODE", "deterministic").strip().lower()
     if mode in {"deterministic", "test", "local"}:
@@ -113,5 +193,5 @@ def executor_from_environment() -> FleetExecutor:
     if mode in {"google", "google_adk", "vertex", "vertex_adk"}:
         from .google_adk import GoogleAdkExecutor
 
-        return GoogleAdkExecutor()
+        return BudgetedExecutor(GoogleAdkExecutor(), _live_model_call_budget())
     raise ExecutionUnavailable(f"unsupported RECOVERY_MESH_EXECUTION_MODE={mode!r}")

@@ -1,11 +1,6 @@
 name: gcp-policy-audit
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/gcp-policy-audit.yml
   workflow_dispatch:
 
 permissions:
@@ -16,8 +11,8 @@ env:
   GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
   GOOGLE_CLOUD_RUN_REGION: europe-west1
   RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
-  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
-  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh-audit
+  AUDITOR_SERVICE_ACCOUNT: recovery-mesh-auditor@evidencebound-rm-c977c1.iam.gserviceaccount.com
 
 jobs:
   audit:
@@ -30,7 +25,7 @@ jobs:
         with:
           project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
           workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+          service_account: ${{ env.AUDITOR_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
@@ -73,15 +68,40 @@ jobs:
           probe org_policy_require_invoker_iam gcloud org-policies describe run.managed.requireInvokerIam --project="$PROJECT" --effective --format=yaml
           probe org_policy_set_on_project gcloud org-policies list --project="$PROJECT" --format='table(constraint,etag)'
 
-          echo "===== PROBE:cloud_run_service_metadata ====="
+          echo "===== PROBE:cloud_run_service_v1_metadata ====="
           set +e
           gcloud run services describe "$SERVICE" \
             --project="$PROJECT" \
             --region="$REGION" \
-            --format='yaml(metadata.name,metadata.labels,metadata.annotations,spec.template.metadata.annotations,spec.template.spec.serviceAccountName,status.url,status.address,status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' 2>&1
+            --format='yaml(metadata.name,metadata.generation,metadata.labels,metadata.annotations,spec.traffic,spec.template.metadata.annotations,spec.template.spec.serviceAccountName,status.observedGeneration,status.url,status.address,status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' 2>&1
           SERVICE_RC=$?
           set -e
-          echo "PROBE_RC:cloud_run_service_metadata=${SERVICE_RC}"
+          echo "PROBE_RC:cloud_run_service_v1_metadata=${SERVICE_RC}"
+          echo
+
+          echo "===== PROBE:cloud_run_service_v2_reconciliation ====="
+          set +e
+          ACCESS_TOKEN="$(gcloud auth print-access-token 2>/tmp/access-token.err)"
+          TOKEN_RC=$?
+          set -e
+          echo "ACCESS_TOKEN_RC=${TOKEN_RC}"
+          if [ "$TOKEN_RC" -ne 0 ]; then
+            sed -n '1,80p' /tmp/access-token.err || true
+          elif [ -n "$ACCESS_TOKEN" ]; then
+            set +e
+            curl --silent --show-error --fail-with-body \
+              --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+              "https://run.googleapis.com/v2/projects/${PROJECT}/locations/${REGION}/services/${SERVICE}" \
+              --output /tmp/cloud-run-v2.json
+            V2_RC=$?
+            set -e
+            echo "CURL_RC=${V2_RC}"
+            if [ -s /tmp/cloud-run-v2.json ]; then
+              jq '{name,generation,observedGeneration,reconciling,terminalCondition,conditions,latestReadyRevision,latestCreatedRevision,traffic,trafficStatuses,uri,urls,ingress,invokerIamDisabled,defaultUriDisabled,template:{serviceAccount:.template.serviceAccount,containers:[.template.containers[]? | {name,image}]}}' /tmp/cloud-run-v2.json || true
+            fi
+            echo "PROBE_RC:cloud_run_service_v2_reconciliation=${V2_RC}"
+          fi
+          unset ACCESS_TOKEN || true
           echo
 
           REVISION="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
@@ -139,10 +159,10 @@ jobs:
             echo "===== PROBE:authenticated_health ====="
             set +e
             ID_TOKEN="$(gcloud auth print-identity-token --audiences="$SERVICE_URL" 2>/tmp/id-token.err)"
-            TOKEN_RC=$?
+            ID_TOKEN_RC=$?
             set -e
-            echo "ID_TOKEN_RC=${TOKEN_RC}"
-            if [ "$TOKEN_RC" -ne 0 ]; then
+            echo "ID_TOKEN_RC=${ID_TOKEN_RC}"
+            if [ "$ID_TOKEN_RC" -ne 0 ]; then
               sed -n '1,80p' /tmp/id-token.err || true
             elif [ -n "$ID_TOKEN" ]; then
               set +e
@@ -202,13 +222,9 @@ jobs:
             fi
             echo "PROBE_RC:vpc_service_perimeters=0"
             echo
-
-            probe org_custom_constraints gcloud org-policies list-custom-constraints \
-              --organization="$ORG_ID" \
-              --format='yaml(name,displayName,resourceTypes,methodTypes,condition,actionType)'
           else
             echo "VPC_SC_ORG_SCOPE=ABSENT"
-            echo "VPC_SC_CONCLUSION=No organization ancestor was visible to this identity; organization-scoped VPC Service Controls cannot be confirmed from Access Context Manager."
+            echo "VPC_SC_CONCLUSION=No organization ancestor is attached to this project, so an organization-scoped VPC Service Controls perimeter cannot contain it."
           fi
 
           echo "AUDIT_COMPLETE=TRUE"

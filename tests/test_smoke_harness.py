@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+def test_live_smoke_embedded_python_compiles() -> None:
+    script = Path("scripts/smoke-cloud-run.sh").read_text(encoding="utf-8")
+
+    multiline = re.findall(r"python -c '\n(.*?)\n'", script, flags=re.DOTALL)
+    assert len(multiline) == 4
+    for index, source in enumerate(multiline, start=1):
+        compile(source, f"<smoke-python-multiline-{index}>", "exec")
+
+    single_line = re.findall(r"python -c '([^'\n]+)'", script)
+    assert len(single_line) == 1
+    compile(single_line[0], "<smoke-python-inline>", "exec")

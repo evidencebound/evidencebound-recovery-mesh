@@ -18,15 +18,31 @@ Submission draft ID: `1136853`
 | 28086 | Organization name | `N/A — individual submission` | READY |
 | 28087 | What date did you start this project? | `08-14-26` | READY; git history begins in submission period |
 | 28141 | URL to public/private code repo | `https://github.com/moneyparking/evidencebound-recovery-mesh` | READY; public repository created |
-| 28089 | Reproducible Testing instructions in README? | `Yes` | READY locally; remote CI/repo parity still must be verified |
+| 28089 | Reproducible Testing instructions in README? | `Yes` | READY; remote CI verified on public `main` |
 | 28088 | Hosted project URL | **PENDING** | Cloud Run not yet deployed |
 | 28090 | Testing instructions | **PENDING FINAL URL** | draft below |
-| 28091 | Which Google SDK did you use? | `Agent Development Kit (ADK)` | source integration exists; live ADK gate still pending |
+| 28091 | Which Google SDK did you use? | `Agent Development Kit (ADK)` | source + remote ADK construction gate verified; live invocation still pending |
 | 28142 | Which Google Cloud Service(s) did you use? | `Cloud Run` | **DO NOT SUBMIT YET**; deployment pending |
 | 28092 | Architecture diagram | **PENDING FILE** | required upload |
 | 28143 | Which Google AI Models did you use? | `Gemini 3.5 Flash` | configured in source; **DO NOT SUBMIT YET** until live invocation receipt |
 | 28106 | Bonus content link | optional / pending | not started |
 | 28107 | Bonus social link | optional / pending | not started |
+
+## Remote CI evidence
+
+Public `main` commit `b5c1568f208ad4f7e435a9497f34a7e5696ae4cd` passed GitHub Actions run `31791061902` on 2026-08-14:
+
+- `google-adk==2.7.0` and Google Cloud dependencies installed from the declared package;
+- Ruff: PASS;
+- strict mypy: PASS (`13 source files`);
+- pytest: **28 passed, 1 skipped**;
+- ADK catalog construction test: PASS with installed Google ADK;
+- branch-aware coverage: **91.91%** (required >=90%);
+- Python compile gate: PASS;
+- committed-secret regex gate: PASS;
+- Docker image build: PASS.
+
+The one skipped test is the opt-in live Google integration test. A skipped live test is not a Gemini/Vertex PASS.
 
 ## Draft private testing instructions
 
@@ -51,6 +67,7 @@ Submission draft ID: `1136853`
 - [x] 100 synthetic agent-checkpoint scale probe
 - [x] Reproducible local README instructions
 - [x] Public GitHub repository URL
+- [x] Remote GitHub CI / ADK construction / container build
 - [ ] Live Gemini 3.5+ invocation via Google ADK
 - [ ] Google Cloud Cloud Run deployment
 - [ ] Hosted judge URL

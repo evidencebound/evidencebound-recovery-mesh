@@ -20,11 +20,8 @@ command -v gcloud >/dev/null || { echo "BLOCKER=gcloud CLI not installed" >&2; e
 ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
 [ -n "$ACCOUNT" ] || { echo "BLOCKER=no active gcloud account" >&2; exit 3; }
 
-PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
-[ -n "$PROJECT_ID" ] && [ "$PROJECT_ID" != "(unset)" ] || {
-  echo "BLOCKER=no Google Cloud project selected; set GOOGLE_CLOUD_PROJECT or select one in Cloud Shell" >&2
-  exit 4
-}
+: "${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT to the explicit hackathon Google Cloud project ID}"
+PROJECT_ID="$GOOGLE_CLOUD_PROJECT"
 
 PROJECT_STATE="$(gcloud projects describe "$PROJECT_ID" --format='value(lifecycleState)')"
 [ "$PROJECT_STATE" = "ACTIVE" ] || { echo "BLOCKER=project is not ACTIVE: $PROJECT_STATE" >&2; exit 5; }

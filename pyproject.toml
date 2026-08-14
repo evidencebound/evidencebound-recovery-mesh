@@ -32,7 +32,7 @@ packages = ["src/recovery_mesh"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 markers = ["integration: requires external Google services/credentials"]
 
 [tool.ruff]

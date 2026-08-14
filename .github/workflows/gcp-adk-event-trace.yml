@@ -1,0 +1,125 @@
+name: gcp-adk-event-trace
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/gcp-adk-event-trace.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_LOCATION: global
+  GOOGLE_GENAI_USE_VERTEXAI: "TRUE"
+  RECOVERY_MESH_MODEL: gemini-3.5-flash
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install .
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Trace one controlled Statistician ADK invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import asyncio
+          import importlib.metadata
+          import json
+
+          from google.adk.runners import InMemoryRunner
+          from google.genai import types
+
+          from app.agent import build_execution_agent
+          from recovery_mesh.workload import baseline_source_outputs, build_agent_prompt
+
+          async def main() -> None:
+              print("ADK_VERSION=" + importlib.metadata.version("google-adk"))
+              agent = build_execution_agent("statistician", model_name="gemini-3.5-flash")
+              app_name = "recovery_mesh_statistician_trace"
+              runner = InMemoryRunner(agent=agent, app_name=app_name)
+              session = await runner.session_service.create_session(
+                  app_name=app_name,
+                  user_id="mesh-controlled-event-trace",
+              )
+              prompt = build_agent_prompt("statistician", baseline_source_outputs())
+              message = types.Content(
+                  role="user",
+                  parts=[types.Part.from_text(text=prompt)],
+              )
+              count = 0
+              try:
+                  async for event in runner.run_async(
+                      user_id=session.user_id,
+                      session_id=session.id,
+                      new_message=message,
+                  ):
+                      count += 1
+                      content = getattr(event, "content", None)
+                      parts = list(getattr(content, "parts", None) or [])
+                      part_rows = []
+                      for part in parts:
+                          row = {
+                              "has_text": bool(getattr(part, "text", None)),
+                              "function_call": getattr(getattr(part, "function_call", None), "name", None),
+                              "function_response": getattr(getattr(part, "function_response", None), "name", None),
+                          }
+                          text = getattr(part, "text", None)
+                          if text:
+                              row["text_prefix"] = str(text)[:240].replace("\n", " ")
+                          part_rows.append(row)
+                      output = getattr(event, "output", None)
+                      try:
+                          output_safe = json.dumps(output, default=str, sort_keys=True)[:600]
+                      except Exception:
+                          output_safe = repr(output)[:600]
+                      is_final = getattr(event, "is_final_response", None)
+                      final_value = bool(is_final()) if callable(is_final) else None
+                      print(
+                          "EVENT="
+                          + json.dumps(
+                              {
+                                  "index": count,
+                                  "author": getattr(event, "author", None),
+                                  "partial": getattr(event, "partial", None),
+                                  "is_final_response": final_value,
+                                  "content_role": getattr(content, "role", None),
+                                  "parts": part_rows,
+                                  "output": output_safe,
+                              },
+                              sort_keys=True,
+                          )
+                      )
+              finally:
+                  close = getattr(runner, "close", None)
+                  if close is not None:
+                      maybe = close()
+                      if hasattr(maybe, "__await__"):
+                          await maybe
+              print(f"EVENT_COUNT={count}")
+
+          asyncio.run(main())
+          PY
+          echo 'CLOUD_RUN_MUTATIONS=NONE'
+          echo 'BUILD_OR_DEPLOY=NONE'

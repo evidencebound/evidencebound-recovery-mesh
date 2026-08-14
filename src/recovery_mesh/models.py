@@ -62,7 +62,7 @@ class Checkpoint(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_semantics(self) -> "Checkpoint":
+    def validate_semantics(self) -> Checkpoint:
         if self.kind is CheckpointKind.AGENT and (not self.agent_id or not self.agent_version):
             raise ValueError("agent checkpoints require agent_id and agent_version")
         if self.kind is CheckpointKind.ACTION and not self.side_effect_key:

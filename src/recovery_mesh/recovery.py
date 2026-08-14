@@ -131,7 +131,9 @@ class RecoveryEngine:
         for checkpoint_id in plan.blast_radius.blocked_action_nodes:
             item = self.graph.checkpoint(checkpoint_id)
             replacements.append(
-                item.model_copy(update={"verification_status": TrustStatus.BLOCKED, "verified_at": None})
+                item.model_copy(
+                    update={"verification_status": TrustStatus.BLOCKED, "verified_at": None}
+                )
             )
         self.graph = self.graph.replace_many(replacements)
         return self.graph
@@ -164,7 +166,9 @@ class RecoveryEngine:
             update={
                 "structured_output_digest": digest,
                 "integrity": current.integrity.model_copy(update={"digest": digest}),
-                "input_digests": input_digests if input_digests is not None else current.input_digests,
+                "input_digests": (
+                    input_digests if input_digests is not None else current.input_digests
+                ),
                 "evidence_digests": (
                     evidence_digests if evidence_digests is not None else current.evidence_digests
                 ),

@@ -90,7 +90,7 @@ class TrustGraph:
             raise KeyError(f"unknown checkpoint ids: {sorted(unknown)}")
         return tuple(item for item in self._topological if item in requested)
 
-    def replace(self, checkpoint: Checkpoint) -> "TrustGraph":
+    def replace(self, checkpoint: Checkpoint) -> TrustGraph:
         if checkpoint.checkpoint_id not in self._nodes:
             raise KeyError(f"unknown checkpoint_id: {checkpoint.checkpoint_id}")
         if checkpoint.run_id != self.run_id:
@@ -101,7 +101,7 @@ class TrustGraph:
         ]
         return TrustGraph(items)
 
-    def replace_many(self, replacements: Iterable[Checkpoint]) -> "TrustGraph":
+    def replace_many(self, replacements: Iterable[Checkpoint]) -> TrustGraph:
         by_id = {item.checkpoint_id: item for item in replacements}
         unknown = set(by_id).difference(self._nodes)
         if unknown:

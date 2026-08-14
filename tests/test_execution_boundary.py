@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from recovery_mesh.execution import AgentExecutionReceipt
+import pytest
+
+from recovery_mesh.execution import (
+    AgentExecutionReceipt,
+    ExecutionUnavailable,
+    executor_from_environment,
+)
 from recovery_mesh.runtime import DemoRun
 
 
@@ -83,9 +89,6 @@ def test_agent_checkpoint_input_digests_bind_actual_parent_outputs() -> None:
 
 
 def test_invalid_execution_mode_fails_closed(monkeypatch) -> None:
-    from recovery_mesh.execution import ExecutionUnavailable, executor_from_environment
-    import pytest
-
     monkeypatch.setenv("RECOVERY_MESH_EXECUTION_MODE", "not-a-provider")
     with pytest.raises(ExecutionUnavailable):
         executor_from_environment()

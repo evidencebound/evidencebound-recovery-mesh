@@ -6,7 +6,9 @@ from recovery_mesh.recovery import RecoveryEngine, RecoveryInvariantError, SideE
 from recovery_mesh.workload import RUN_ID, build_demo_checkpoints
 
 
-def _break(checkpoint_id: str, break_class: TrustBreakClass = TrustBreakClass.EVIDENCE) -> TrustBreak:
+def _break(
+    checkpoint_id: str, break_class: TrustBreakClass = TrustBreakClass.EVIDENCE
+) -> TrustBreak:
     return TrustBreak(
         break_id=f"break:{checkpoint_id}",
         run_id=RUN_ID,

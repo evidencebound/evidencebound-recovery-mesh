@@ -78,7 +78,9 @@ def build_root_agent(*, model_name: str = MODEL) -> Agent:
     return Agent(
         name="recovery_mesh_orchestrator",
         model=_model(model_name),
-        description="Coordinates specialist research while deterministic Recovery Mesh gates trust.",
+        description=(
+            "Coordinates specialist research while deterministic Recovery Mesh gates trust."
+        ),
         instruction="""
 Coordinate the specialist research fleet. Delegate quantitative work to statistician, context
 work to scout, and adversarial review to skeptic. Never claim VERIFIED, safe-to-publish, or

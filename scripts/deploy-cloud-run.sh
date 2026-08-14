@@ -24,12 +24,8 @@ BUILD_SA_RESOURCE="projects/${GOOGLE_CLOUD_PROJECT}/serviceAccounts/${BUILD_SA}"
   exit 5
 }
 
-# First-time API/IAM/WIF/secret setup is intentionally separated into gcp-owner-bootstrap.sh so
-# the recurring deploy identity cannot mutate project IAM or enable services.
 "$(dirname "$0")/gcp-live-preflight.sh"
 
-# Retrieve the protected smoke credential without printing it. First owner bootstrap can pass it
-# through the process environment; recurring keyless deploys receive secret-level accessor only.
 if [ -z "${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE:-}" ]; then
   export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(
     gcloud secrets versions access "$JUDGE_SECRET_VERSION" \
@@ -44,9 +40,10 @@ fi
 
 PUBLIC_ARGS=()
 if [ "${RECOVERY_MESH_PUBLIC_BOOTSTRAP:-0}" = "1" ]; then
-  # The public service exposes only the UI/health unauthenticated. Run and mutation APIs enforce
-  # the application-level key stored in Secret Manager.
-  PUBLIC_ARGS+=(--no-invoker-iam-check)
+  # Public UI/health, application-level protection on run/mutation endpoints.
+  # Force internet ingress and keep the run.app URL enabled so project/org defaults cannot
+  # silently turn a judge-facing service into a network-hidden HTTP 404.
+  PUBLIC_ARGS+=(--ingress all --default-url --no-invoker-iam-check)
 fi
 
 gcloud run deploy "$SERVICE" \
@@ -67,15 +64,9 @@ gcloud run deploy "$SERVICE" \
   --labels "app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026" \
   --quiet
 
-# Cloud Run currently exposes both deterministic and legacy/non-deterministic run.app hostnames.
-# Use the documented deterministic hostname for judge/smoke receipts so we do not depend on a
-# legacy status.url alias that can be stale during hostname rollout/propagation.
-PROJECT_NUMBER="$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')"
-URL="https://${SERVICE}-${PROJECT_NUMBER}.${RUN_REGION}.run.app"
-DESCRIBED_URL="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.url)')"
+URL="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.url)')"
 REVISION="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
 printf 'SERVICE_URL=%s\n' "$URL"
-printf 'SERVICE_STATUS_URL=%s\n' "$DESCRIBED_URL"
 printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 printf 'BUILD_SERVICE_ACCOUNT=%s\n' "$BUILD_SA"

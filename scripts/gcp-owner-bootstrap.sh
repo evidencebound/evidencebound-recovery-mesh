@@ -242,11 +242,13 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER_SA" \
   --quiet >/dev/null
 
 PROVIDER_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
-SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"
+SERVICE_URL="https://${SERVICE}-${PROJECT_NUMBER}.${RUN_REGION}.run.app"
+STATUS_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"
 REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
 
 printf 'GCP_OWNER_BOOTSTRAP=PASS\n'
 printf 'SERVICE_URL=%s\n' "$SERVICE_URL"
+printf 'SERVICE_STATUS_URL=%s\n' "$STATUS_URL"
 printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 printf 'BUILD_SERVICE_ACCOUNT=%s\n' "$BUILD_SA"

@@ -103,17 +103,18 @@ def test_budgeted_executor_blocks_before_third_provider_call() -> None:
     assert executor.is_live_google is True
     assert executor.remaining_model_calls == 2
 
-    executor.execute(run_id="budget", checkpoint_id="scout", prompt="Use only the bounded JSON inputs")
-    executor.execute(run_id="budget", checkpoint_id="scout", prompt="Use only the bounded JSON inputs")
+    call = {
+        "run_id": "budget",
+        "checkpoint_id": "scout",
+        "prompt": "Use only the bounded JSON inputs",
+    }
+    executor.execute(**call)
+    executor.execute(**call)
     assert executor.remaining_model_calls == 0
     assert inner.calls == ["scout", "scout"]
 
     with pytest.raises(AgentExecutionError, match="budget exhausted"):
-        executor.execute(
-            run_id="budget",
-            checkpoint_id="scout",
-            prompt="Use only the bounded JSON inputs",
-        )
+        executor.execute(**call)
     assert inner.calls == ["scout", "scout"]
 
 

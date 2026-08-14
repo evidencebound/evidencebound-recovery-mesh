@@ -1,20 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 URL="${1:?Usage: smoke-cloud-run.sh https://service.run.app}"
+: "${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE:?Protected smoke requires RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE}"
+
+protected_curl() {
+  # Feed the credential through curl config stdin so the secret is not present in the curl argv.
+  printf 'header = "X-Recovery-Mesh-Judge-Key: %s"\n' "$RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE" \
+    | curl --config - "$@"
+}
 
 HEALTH_JSON="$(curl --fail --silent --show-error "${URL}/healthz")"
 printf '%s' "$HEALTH_JSON" | python -c '
 import json,sys
 x=json.load(sys.stdin)
 assert x["status"]=="ok", x
+assert x["judge_access_required"] is True, x
+assert x["judge_key_header"] == "X-Recovery-Mesh-Judge-Key", x
 execution=x["execution"]
 assert execution["provider"]=="google_adk_vertex", execution
 assert execution["live_google"] is True, execution
 assert execution["model"] in {"gemini-3.5-flash","gemini-3.6-flash"}, execution
-print(f"HEALTH=PASS provider={execution[\"provider\"]} model={execution[\"model\"]}")
+print(f"HEALTH=PASS provider={execution[\"provider\"]} model={execution[\"model\"]} judge_access=protected")
 '
 
-BASELINE_JSON="$(curl --fail --silent --show-error -X POST "${URL}/api/runs")"
+UNAUTHORIZED_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST "${URL}/api/runs")"
+[ "$UNAUTHORIZED_STATUS" = "401" ] || {
+  echo "BLOCKER=unprotected run endpoint returned HTTP ${UNAUTHORIZED_STATUS}, expected 401" >&2
+  exit 7
+}
+printf 'JUDGE_API_AUTH=PASS unauthenticated_post=401\n'
+
+BASELINE_JSON="$(protected_curl --fail --silent --show-error -X POST "${URL}/api/runs")"
 RUN_ID="$(printf '%s' "$BASELINE_JSON" | python -c 'import json,sys; print(json.load(sys.stdin)["run_id"])')"
 printf '%s' "$BASELINE_JSON" | python -c '
 import json,sys
@@ -28,7 +44,7 @@ assert all(r["invocation_ids"] for r in execution["baseline"]), execution["basel
 print("LIVE_ADK_BASELINE=PASS agents=4")
 '
 
-FAULT_JSON="$(curl --fail --silent --show-error -X POST "${URL}/api/runs/${RUN_ID}/fault/stale_evidence")"
+FAULT_JSON="$(protected_curl --fail --silent --show-error -X POST "${URL}/api/runs/${RUN_ID}/fault/stale_evidence")"
 printf '%s' "$FAULT_JSON" | python -c '
 import json,sys
 x=json.load(sys.stdin)
@@ -43,7 +59,7 @@ assert states["scout"] == "VERIFIED", states
 print("TRUST_BREAK=PASS blocked=publish_action reused=scout")
 '
 
-RECOVERED_JSON="$(curl --fail --silent --show-error -X POST "${URL}/api/runs/${RUN_ID}/recover")"
+RECOVERED_JSON="$(protected_curl --fail --silent --show-error -X POST "${URL}/api/runs/${RUN_ID}/recover")"
 printf '%s' "$RECOVERED_JSON" | python -c '
 import json,sys
 x=json.load(sys.stdin)
@@ -66,4 +82,5 @@ if b.get("full_restart_input_tokens") is not None and b.get("selective_recovery_
 '
 
 printf 'RUN_ID=%s\n' "$RUN_ID"
-printf 'JUDGE_URL=%s/?autorun=stale_evidence&recover=1\n' "$URL"
+printf 'JUDGE_URL=%s/\n' "$URL"
+printf 'JUDGE_FLOW=enter private Devpost testing key, then Start fleet -> stale_evidence -> recover\n'

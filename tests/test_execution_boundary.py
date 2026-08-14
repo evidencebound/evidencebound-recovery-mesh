@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import pytest
 
+import recovery_mesh.execution as execution_module
 from recovery_mesh.execution import (
+    AgentExecutionError,
     AgentExecutionReceipt,
+    BudgetedExecutor,
+    DeterministicExecutor,
     ExecutionUnavailable,
+    ModelCallBudget,
     executor_from_environment,
 )
 from recovery_mesh.runtime import DemoRun
@@ -86,6 +91,66 @@ def test_agent_checkpoint_input_digests_bind_actual_parent_outputs() -> None:
     new_history_digest = graph.checkpoint("history_snapshot").structured_output_digest
     assert new_history_digest != old_history_digest
     assert graph.checkpoint("statistician").input_digests[1] == new_history_digest
+
+
+def test_budgeted_executor_blocks_before_third_provider_call() -> None:
+    inner = RecordingGoogleExecutor()
+    budget = ModelCallBudget(2)
+    executor = BudgetedExecutor(inner, budget)
+
+    assert executor.provider_name == "google_adk_vertex"
+    assert executor.model_name == "gemini-3.5-flash"
+    assert executor.is_live_google is True
+    assert executor.remaining_model_calls == 2
+
+    executor.execute(run_id="budget", checkpoint_id="scout", prompt="Use only the bounded JSON inputs")
+    executor.execute(run_id="budget", checkpoint_id="scout", prompt="Use only the bounded JSON inputs")
+    assert executor.remaining_model_calls == 0
+    assert inner.calls == ["scout", "scout"]
+
+    with pytest.raises(AgentExecutionError, match="budget exhausted"):
+        executor.execute(
+            run_id="budget",
+            checkpoint_id="scout",
+            prompt="Use only the bounded JSON inputs",
+        )
+    assert inner.calls == ["scout", "scout"]
+
+
+def test_live_budget_configuration_wraps_google_executor(monkeypatch) -> None:
+    import recovery_mesh.google_adk as google_adk_module
+
+    monkeypatch.setenv("RECOVERY_MESH_EXECUTION_MODE", "google_adk")
+    monkeypatch.setenv("RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET", "7")
+    monkeypatch.setattr(execution_module, "_LIVE_BUDGET", None)
+    monkeypatch.setattr(google_adk_module, "GoogleAdkExecutor", RecordingGoogleExecutor)
+
+    executor = executor_from_environment()
+    assert isinstance(executor, BudgetedExecutor)
+    assert executor.remaining_model_calls == 7
+
+
+def test_invalid_live_budget_configuration_fails_closed(monkeypatch) -> None:
+    import recovery_mesh.google_adk as google_adk_module
+
+    monkeypatch.setenv("RECOVERY_MESH_EXECUTION_MODE", "google_adk")
+    monkeypatch.setenv("RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET", "zero")
+    monkeypatch.setattr(execution_module, "_LIVE_BUDGET", None)
+    monkeypatch.setattr(google_adk_module, "GoogleAdkExecutor", RecordingGoogleExecutor)
+    with pytest.raises(ExecutionUnavailable, match="positive integer"):
+        executor_from_environment()
+
+    monkeypatch.setenv("RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET", "0")
+    monkeypatch.setattr(execution_module, "_LIVE_BUDGET", None)
+    with pytest.raises(ExecutionUnavailable, match="must be positive"):
+        executor_from_environment()
+
+
+def test_budget_wrapper_rejects_non_live_executor() -> None:
+    with pytest.raises(ValueError, match="only for live Google"):
+        BudgetedExecutor(DeterministicExecutor(), ModelCallBudget(1))
+    with pytest.raises(ValueError, match="must be positive"):
+        ModelCallBudget(0)
 
 
 def test_invalid_execution_mode_fails_closed(monkeypatch) -> None:

@@ -48,11 +48,14 @@ export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
 export GOOGLE_CLOUD_RUN_REGION=europe-west1
 export GOOGLE_CLOUD_LOCATION=global
 export RECOVERY_MESH_MODEL=gemini-3.5-flash
+export RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET=64
 
 ./scripts/gcp-owner-bootstrap.sh 2>&1 | tee ~/recovery-mesh-bootstrap.log
 ```
 
-The bootstrap now fails closed before mutation unless all of these match the isolated project: project ID, project number, hackathon label, ACTIVE lifecycle state, and billing enabled.
+The bootstrap fails closed before mutation unless all of these match the isolated project: project ID, project number, hackathon label, ACTIVE lifecycle state, and billing enabled.
+
+The `64` live-call value is a process-local public-demo guard, not a currency/spend limit. It fails provider calls closed after the reservation budget is exhausted and resets if Cloud Run starts a new process/revision.
 
 ## Required successful receipt
 
@@ -70,10 +73,22 @@ JUDGE_URL=...
 GCP_OWNER_BOOTSTRAP=PASS
 SERVICE_URL=...
 CLOUD_RUN_REVISION=...
+LIVE_MODEL_CALL_BUDGET_PER_PROCESS=64
 WORKLOAD_IDENTITY_PROVIDER=...
 ```
 
 If any command emits `BLOCKER`, `ERROR`, `PERMISSION_DENIED`, `BILLING`, `QUOTA`, or a failed assertion, stop and retain the output. Do not replace a failed Google path with deterministic output.
+
+## Read-only Google Cloud proof receipt
+
+After a successful bootstrap, collect a concise non-mutating receipt for the demo/submission evidence pack:
+
+```bash
+export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
+./scripts/gcp-proof-receipt.sh | tee ~/recovery-mesh-gcp-proof.txt
+```
+
+It reports the exact project, project number, Cloud Run service URL/revision/runtime identity, live `/healthz`, and recent Cloud Run request metadata without printing application payloads or credentials.
 
 ## After first bootstrap
 

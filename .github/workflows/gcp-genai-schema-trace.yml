@@ -1,4 +1,5 @@
 name: gcp-genai-schema-trace
+# trigger: 2026-08-14T19:44Z minimal thinking after empty default-medium response
 
 on:
   workflow_dispatch:
@@ -39,7 +40,7 @@ jobs:
           workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
 
-      - name: Call Gemini directly with the exact Recovery Mesh worker schema
+      - name: Call Gemini directly with minimal thinking and the exact worker schema
         shell: bash
         run: |
           set -euo pipefail
@@ -67,12 +68,28 @@ jobs:
               contents=prompt,
               config=types.GenerateContentConfig(
                   system_instruction=agent.instruction,
-                  temperature=0.0,
                   max_output_tokens=256,
+                  thinking_config=types.ThinkingConfig(thinking_level="minimal"),
                   response_mime_type="application/json",
                   response_json_schema=WorkerOutput.model_json_schema(),
               ),
           )
+          usage = getattr(response, "usage_metadata", None)
+          if usage is not None:
+              print("GENAI_USAGE=" + json.dumps(usage.model_dump(exclude_none=True), sort_keys=True, separators=(",", ":"), default=str))
+          candidates = getattr(response, "candidates", None) or []
+          for index, candidate in enumerate(candidates):
+              print(
+                  "GENAI_CANDIDATE_{}=".format(index)
+                  + json.dumps(
+                      {
+                          "finish_reason": str(getattr(candidate, "finish_reason", None)),
+                          "finish_message": getattr(candidate, "finish_message", None),
+                      },
+                      sort_keys=True,
+                      default=str,
+                  )
+              )
           text = (response.text or "").strip()
           print("GENAI_TEXT_PREFIX=" + text[:600].replace("\n", " "))
           print("GENAI_HAS_TEXT=" + str(bool(text)).lower())
@@ -86,9 +103,6 @@ jobs:
           print("GENAI_SCHEMA_VALID=TRUE")
           print("GENAI_EVIDENCE_IDS=" + json.dumps(worker.evidence_ids, separators=(",", ":")))
           print("GENAI_CONFIDENCE=" + str(worker.confidence))
-          usage = getattr(response, "usage_metadata", None)
-          if usage is not None:
-              print("GENAI_USAGE=" + json.dumps(usage.model_dump(exclude_none=True), sort_keys=True, separators=(",", ":"), default=str))
           PY
           echo 'CLOUD_RUN_MUTATIONS=NONE'
           echo 'BUILD_OR_DEPLOY=NONE'

@@ -18,6 +18,46 @@ function counts(run) {
   return result;
 }
 
+function setProofStep(key, className, meta) {
+  const node = qs(`[data-proof="${key}"]`);
+  if (!node) return;
+  node.className = `proof-step ${className}`;
+  node.querySelector('.proof-meta').textContent = meta;
+}
+
+function renderProof(run) {
+  qsa('[data-proof]').forEach(node => {
+    node.className = 'proof-step pending';
+    node.querySelector('.proof-meta').textContent = 'waiting';
+  });
+
+  const blast = run.active_blast_radius;
+  if (blast) {
+    const recomputeCount = blast.recomputation_set?.length || 0;
+    const reusable = blast.reusable_checkpoints || [];
+    const blocked = blast.blocked_action_nodes || [];
+    const reusedScout = reusable.includes('scout');
+
+    setProofStep('trust-break', 'alert', blast.invalidated_source || 'detected');
+    setProofStep('blast-radius', 'alert', `${recomputeCount} checkpoints to recompute`);
+    setProofStep('action-blocked', 'blocked', blocked.length ? blocked.join(', ') : 'blocked');
+    setProofStep('safe-reuse', 'complete', reusedScout ? 'Scout preserved' : `${reusable.length} reusable`);
+    setProofStep('recomputed', 'pending', 'awaiting recovery');
+    setProofStep('verified-recovery', 'pending', 'action remains frozen');
+    return;
+  }
+
+  if (run.benchmark) {
+    const breakEvent = run.events.find(e => e.event_type.includes('TRUST_BREAK'));
+    setProofStep('trust-break', 'complete', breakEvent?.checkpoint_id || 'recorded');
+    setProofStep('blast-radius', 'complete', 'exact descendants recorded');
+    setProofStep('action-blocked', 'complete', 'publish_action was blocked');
+    setProofStep('safe-reuse', 'complete', `${run.benchmark.reused_agent_checkpoints} agent reused`);
+    setProofStep('recomputed', 'complete', `${run.benchmark.selective_recovery_agent_executions} agents rerun`);
+    setProofStep('verified-recovery', 'complete', 'publish_action VERIFIED');
+  }
+}
+
 function render(run) {
   state.run = run;
   qs('#runId').textContent = run.run_id;
@@ -32,6 +72,7 @@ function render(run) {
   qs('#reusableCount').textContent = run.active_blast_radius?.reusable_checkpoints?.length || 0;
   qs('#runState').textContent = c.BLOCKED ? 'ACTION BLOCKED' : (run.benchmark ? 'RECOVERED' : 'VERIFIED BASELINE');
   qs('#runState').className = 'pill ' + (run.benchmark ? 'ok' : 'neutral');
+  renderProof(run);
   renderGraph(run);
   renderEvents(run.events);
   renderBenchmark(run.benchmark);
@@ -129,7 +170,6 @@ function renderBenchmark(b) {
     : '* Measured checkpoint-execution reduction in this controlled deterministic test scenario only. Gemini calls/tokens are intentionally unclaimed.';
   root.insertAdjacentHTML('beforeend', `<p class="benchmark-empty" style="grid-column:1/-1;margin:2px 0 0">${note}</p>`);
 }
-
 
 qs('#startRun').addEventListener('click', async () => { try { render(await request('/api/runs',{method:'POST'})); } catch(e) { alert(e.message); } });
 qsa('[data-fault]').forEach(btn => btn.addEventListener('click', async () => { if(!state.run) return; try { render(await request(`/api/runs/${state.run.run_id}/fault/${btn.dataset.fault}`,{method:'POST'})); } catch(e) { alert(e.message); } }));

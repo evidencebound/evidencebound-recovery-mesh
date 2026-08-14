@@ -1,0 +1,91 @@
+name: gcp-agent-error-detail
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/gcp-agent-error-detail.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  detail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Capture one protected create-run result
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(gcloud run services describe "$RECOVERY_MESH_SERVICE" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --region "$GOOGLE_CLOUD_RUN_REGION" \
+            --format='value(status.url)')"
+          KEY="$(gcloud secrets versions access 1 \
+            --secret recovery-mesh-judge-key \
+            --project "$GOOGLE_CLOUD_PROJECT")"
+          [ -n "$KEY" ] || { echo 'BLOCKER=judge key unavailable' >&2; exit 2; }
+          echo "::add-mask::${KEY}"
+
+          printf 'header = "X-Recovery-Mesh-Judge-Key: %s"\n' "$KEY" \
+            | curl --config - \
+                --silent --show-error \
+                --request POST \
+                --output /tmp/create-run.json \
+                --write-out 'HTTP_STATUS=%{http_code}\n' \
+                "${URL}/api/runs" \
+            | tee /tmp/status.txt
+          unset KEY
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          status = Path('/tmp/status.txt').read_text().strip()
+          raw = Path('/tmp/create-run.json').read_text()
+          print(status)
+          try:
+              body = json.loads(raw)
+          except json.JSONDecodeError:
+              print('RESPONSE_JSON=INVALID')
+              print('RESPONSE_BODY_PREFIX=' + raw[:500].replace('\n', ' '))
+              raise SystemExit(1)
+
+          if 'detail' in body:
+              detail = str(body['detail'])
+              print('AGENT_ERROR_DETAIL=' + detail[:1000].replace('\n', ' '))
+          else:
+              print('CREATE_RUN_KEYS=' + ','.join(sorted(body.keys())))
+          code = int(status.split('=', 1)[1])
+          if code == 200:
+              print('CREATE_RUN=PASS')
+          elif code == 503:
+              print('CREATE_RUN=EXPECTED_DIAGNOSTIC_503')
+          else:
+              raise SystemExit(f'unexpected HTTP status {code}')
+          PY
+
+          echo 'CLOUD_RUN_MUTATIONS=NONE'
+          echo 'BUILD_OR_DEPLOY=NONE'

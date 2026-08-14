@@ -1,4 +1,5 @@
 name: gcp-agent-error-detail
+# trigger: 2026-08-14T19:32Z revision 00003-slx
 
 on:
   workflow_dispatch:
@@ -43,6 +44,11 @@ jobs:
             --project "$GOOGLE_CLOUD_PROJECT" \
             --region "$GOOGLE_CLOUD_RUN_REGION" \
             --format='value(status.url)')"
+          REVISION="$(gcloud run services describe "$RECOVERY_MESH_SERVICE" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --region "$GOOGLE_CLOUD_RUN_REGION" \
+            --format='value(status.latestReadyRevisionName)')"
+          echo "DIAGNOSTIC_REVISION=${REVISION}"
           KEY="$(gcloud secrets versions access 1 \
             --secret recovery-mesh-judge-key \
             --project "$GOOGLE_CLOUD_PROJECT")"

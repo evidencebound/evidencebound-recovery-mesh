@@ -21,7 +21,24 @@ jobs:
       - run: ruff check .
       - run: mypy src/recovery_mesh
       - run: pytest --cov=recovery_mesh --cov-report=term-missing
-      - run: python -m py_compile app/agent.py src/recovery_mesh/*.py
+      - run: python -m py_compile app/agent.py src/recovery_mesh/*.py scripts/benchmark-scale.py
+      - name: Validate shell entrypoints
+        run: bash -n scripts/gcp-owner-bootstrap.sh scripts/gcp-live-preflight.sh scripts/deploy-cloud-run.sh scripts/smoke-cloud-run.sh
+      - name: Verify deterministic fleet-scale receipt
+        run: |
+          PYTHONPATH=src python scripts/benchmark-scale.py > /tmp/scale-probe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('/tmp/scale-probe.json').read_text())
+          assert receipt['measurement_class'] == 'deterministic_synthetic_scale_probe', receipt
+          assert receipt['synthetic_agent_checkpoints'] == 100, receipt
+          assert receipt['affected_agent_checkpoints'] == 14, receipt
+          assert receipt['reused_agent_checkpoints'] == 86, receipt
+          assert receipt['blocked_action_nodes'] == 1, receipt
+          print('SCALE_PROBE=PASS agents=100 affected=14 reused=86 blocked_actions=1')
+          PY
       - name: Reject committed secrets
         run: |
           ! grep -RIE --exclude-dir=.git --exclude='.env.example' '(AIza[0-9A-Za-z_-]{30,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----)' .

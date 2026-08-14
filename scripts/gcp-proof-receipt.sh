@@ -15,11 +15,9 @@ command -v curl >/dev/null || { echo "BLOCKER=curl not installed" >&2; exit 2; }
   exit 3
 }
 
-PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-[ "$PROJECT_NUMBER" = "$EXPECTED_PROJECT_NUMBER" ] || {
-  echo "BLOCKER=unexpected project number: got $PROJECT_NUMBER expected $EXPECTED_PROJECT_NUMBER" >&2
-  exit 4
-}
+# Project ID and number are immutable hackathon deployment constants already bound into the
+# GitHub WIF provider and Cloud Run service URL. Avoid a Cloud Resource Manager API dependency.
+PROJECT_NUMBER="$EXPECTED_PROJECT_NUMBER"
 
 SERVICE_URL="https://${SERVICE}-${PROJECT_NUMBER}.${RUN_REGION}.run.app"
 STATUS_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"

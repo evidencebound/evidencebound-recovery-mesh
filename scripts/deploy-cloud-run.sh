@@ -64,7 +64,8 @@ gcloud run deploy "$SERVICE" \
   --timeout 300 \
   --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},GOOGLE_CLOUD_LOCATION=${VERTEX_LOCATION},RECOVERY_MESH_MODEL=${MODEL},RECOVERY_MESH_EXECUTION_MODE=google_adk,RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET=${LIVE_MODEL_CALL_BUDGET}" \
   --update-secrets "RECOVERY_MESH_JUDGE_KEY=${JUDGE_SECRET_NAME}:${JUDGE_SECRET_VERSION}" \
-  --labels "app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026"
+  --labels "app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026" \
+  --quiet
 
 URL="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.url)')"
 REVISION="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"

@@ -20,7 +20,7 @@ Submission draft ID: `1136853`
 | 28141 | URL to public/private code repo | `https://github.com/moneyparking/evidencebound-recovery-mesh` | READY; public repository created |
 | 28089 | Reproducible Testing instructions in README? | `Yes` | READY; remote CI verified on public `main` |
 | 28088 | Hosted project URL | **PENDING** | isolated GCP project exists; billing/live deployment pending |
-| 28090 | Testing instructions | **PENDING FINAL URL** | draft below |
+| 28090 | Testing instructions | **PENDING FINAL URL + PRIVATE KEY** | draft below; private judge key must be retrieved only after successful bootstrap |
 | 28091 | Which Google SDK did you use? | `Agent Development Kit (ADK)` | source + remote ADK construction gate verified; live invocation still pending |
 | 28142 | Which Google Cloud Service(s) did you use? | `Cloud Run` | **DO NOT SUBMIT YET**; deployment pending |
 | 28092 | Architecture diagram | **PENDING FILE** | canonical source exists in `docs/ARCHITECTURE.md`; final upload must match deployed state |
@@ -28,24 +28,39 @@ Submission draft ID: `1136853`
 | 28106 | Bonus content link | optional / pending | not started |
 | 28107 | Bonus social link | optional / pending | not started |
 
-## Remote CI evidence
+## Latest remote CI evidence
 
-Public `main` commit `680299413b9711597aefccdaeff3fcc3a7fb9260` passed GitHub Actions run `31801003141` on 2026-08-14:
+Public `main` commit `1221650385716392336175b59295732867d0be79` passed GitHub Actions run `31802835412`, job `94774629648`, on 2026-08-14. GitHub reports the job `completed / success` and every recorded step completed successfully.
+
+Verified receipts from that run:
 
 - `google-adk==2.7.0` and declared Google Cloud dependencies installed;
 - Ruff: PASS;
 - strict mypy: PASS (`13 source files`);
-- pytest: **28 passed, 1 skipped**;
+- pytest: **34 passed, 1 skipped, 2 warnings**;
 - ADK catalog construction test: PASS with installed Google ADK;
-- branch-aware coverage: **91.91%** (required >=90%);
+- branch-aware coverage: **92.55%** (required >=90%);
 - Python compile gate: PASS;
-- shell syntax validation for bootstrap/preflight/deploy/smoke scripts: PASS;
+- shell syntax validation for bootstrap/preflight/deploy/smoke/proof-receipt scripts: PASS;
 - Flight Recorder JavaScript syntax gate (`node --check`): PASS;
 - deterministic synthetic fleet-scale receipt gate: **PASS — 100 agent checkpoints / 14 affected / 86 reused / 1 blocked action**;
 - committed-secret regex gate: PASS;
 - Docker image build: PASS.
 
 The one skipped test is the opt-in live Google integration test. A skipped live test is not a Gemini/Vertex PASS.
+
+Additional source/regression hardening on current `main` includes:
+
+- protected run/read/mutation APIs using `X-Recovery-Mesh-Judge-Key`;
+- live mode fails closed with `503` if the server-side judge secret is absent;
+- missing/incorrect client key fails `401` before model execution;
+- process-local live model-call budget with pre-provider reservation and fail-closed exhaustion;
+- first-bootstrap Secret Manager path for `recovery-mesh-judge-key:1` without printing/committing the value;
+- protected production smoke requirement proving unauthenticated run creation returns `401`;
+- keyless GitHub Workload Identity Federation deployment design restricted to exact repository ID/owner/`main`;
+- non-mutating Google Cloud proof-receipt script.
+
+These are source/test claims only until the Google Cloud bootstrap creates the real secret, WIF provider, Cloud Run revision, and live receipts.
 
 ## Google Cloud deployment evidence boundary
 
@@ -59,20 +74,31 @@ Isolated hackathon target created on 2026-08-14:
 
 The prior project `vocal-lightning-7dmzd` received a deletion request and was observed as `DELETE_REQUESTED`; it is not a Recovery Mesh deployment target.
 
-Bootstrap now fails closed before API/IAM mutation unless the exact project ID, project number, hackathon label, ACTIVE lifecycle, and enabled billing all match. Billing has not yet been verified enabled, so live Google and Cloud Run fields remain pending.
+Bootstrap now fails closed before API/IAM mutation unless the exact project ID, project number, hackathon label, ACTIVE lifecycle, and enabled billing all match. Billing has not yet been verified enabled, so live Google, Secret Manager runtime state, WIF runtime state, and Cloud Run fields remain pending.
 
-A manual keyless GitHub Actions deployment workflow is committed at `.github/workflows/deploy-cloud-run.yml`. It can be used only after the owner bootstrap creates the bounded deployer service account and Workload Identity Federation provider.
+The first bootstrap is designed to create:
+
+- separate `recovery-mesh-runtime` and `recovery-mesh-build` service identities;
+- Secret Manager secret `recovery-mesh-judge-key:1`, generated once without printing the value;
+- a public judge UI/health endpoint with protected run/read/mutation APIs;
+- a bounded live model-call guard (`64` reservations/process by default; explicitly not a billing cap);
+- a keyless `recovery-mesh-deployer` + Workload Identity Federation provider restricted to repo ID `1334014784`, owner `moneyparking`, ref `refs/heads/main`.
+
+A manual keyless GitHub Actions deployment workflow is committed at `.github/workflows/deploy-cloud-run.yml`. It can be used only after the owner bootstrap creates the real bounded deployer identity and WIF provider.
 
 ## Draft private testing instructions
 
 1. Open the hosted Flight Recorder URL.
-2. Run the normal verified workflow.
-3. Inject the visibly labeled `stale_evidence` controlled fault.
-4. Confirm the final action changes to `BLOCKED` before recomputation.
-5. Inspect the exact blast radius and the reusable checkpoints. The judge proof strip must show `TRUST BREAK → BLAST RADIUS → ACTION BLOCKED → SAFE WORK REUSED` from the same runtime state.
-6. Trigger autonomous recovery; do not choose rerun agents manually.
-7. Confirm only affected agent checkpoints rerun, unaffected checkpoints remain reused, and the final action resumes only after deterministic re-verification. The proof strip must finish `BRANCH RECOMPUTED → VERIFIED RECOVERY`.
-8. Run the 100-agent synthetic scale probe from the repository to inspect the deterministic fleet-scale receipt; it is not a claim of 100 Gemini calls.
+2. Enter the private judge access key supplied in this Devpost judge-only field. Do not place this key in public project text/video/screenshots.
+3. Start the normal verified workflow. Confirm the execution provider/model shown by the hosted runtime.
+4. Inject the visibly labeled `stale_evidence` controlled fault.
+5. Confirm the final action changes to `BLOCKED` before recomputation.
+6. Inspect the exact blast radius and reusable checkpoints. The proof strip must show `TRUST BREAK → BLAST RADIUS → ACTION BLOCKED → SAFE WORK REUSED` from the same runtime state.
+7. Trigger autonomous recovery; do not choose rerun agents manually.
+8. Confirm only affected agent checkpoints rerun, unaffected checkpoints remain reused, and the final action resumes only after deterministic re-verification. The proof strip must finish `BRANCH RECOMPUTED → VERIFIED RECOVERY`.
+9. Run the repository's 100-agent synthetic scale probe to inspect the deterministic fleet-scale receipt; it is explicitly not a claim of 100 Gemini calls.
+
+The private key itself remains **PENDING** until the live bootstrap creates `recovery-mesh-judge-key:1`. Retrieve it locally from Secret Manager and paste it only into Devpost's private testing-credentials/instructions field; never paste it into chat or GitHub.
 
 ## Required deliverables
 
@@ -87,14 +113,20 @@ A manual keyless GitHub Actions deployment workflow is committed at `.github/wor
 - [x] Reproducible local README instructions
 - [x] Public GitHub repository URL
 - [x] Remote GitHub CI / ADK construction / shell / JS / scale receipt / container build
+- [x] Protected judge API regression tests
+- [x] Process-local live model-call guard regression tests
 - [x] Canonical architecture source (`docs/ARCHITECTURE.md`)
 - [x] Fortified threat model (`docs/THREAT_MODEL.md`)
 - [x] Isolated hackathon GCP project created
+- [x] Secret Manager / protected-smoke bootstrap path implemented
 - [x] Keyless post-bootstrap deployment workflow prepared
+- [x] Non-mutating Google Cloud proof-receipt script prepared
 - [x] Flight Recorder six-step judge proof strip wired to runtime state
 - [ ] Billing enabled on isolated hackathon project
+- [ ] Secret Manager judge key created in real GCP project
 - [ ] Live Gemini 3.5+ invocation via Google ADK
 - [ ] Google Cloud Cloud Run deployment
+- [ ] Protected production smoke PASS (`401` unauthenticated + live recovery)
 - [ ] Hosted judge URL
 - [ ] Architecture diagram image/file upload
 - [ ] <=4 minute public YouTube/Vimeo demo with visible Google Cloud proof
@@ -119,6 +151,7 @@ Do not call Devpost `submit_project` until all required claims are backed by cur
 - README reproduces the submitted system;
 - live ADK + Gemini execution is observed;
 - Cloud Run deployment is observed;
+- protected judge flow is observed in production;
 - architecture diagram is attached;
 - required demo video is public and <=4 minutes;
 - project description, code, video, diagram, and testing instructions describe the same working system.

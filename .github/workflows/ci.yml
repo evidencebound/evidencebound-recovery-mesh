@@ -24,6 +24,8 @@ jobs:
       - run: python -m py_compile app/agent.py src/recovery_mesh/*.py scripts/benchmark-scale.py
       - name: Validate shell entrypoints
         run: bash -n scripts/gcp-owner-bootstrap.sh scripts/gcp-live-preflight.sh scripts/deploy-cloud-run.sh scripts/smoke-cloud-run.sh
+      - name: Validate Flight Recorder JavaScript
+        run: node --check static/app.js
       - name: Verify deterministic fleet-scale receipt
         run: |
           PYTHONPATH=src python scripts/benchmark-scale.py > /tmp/scale-probe.json

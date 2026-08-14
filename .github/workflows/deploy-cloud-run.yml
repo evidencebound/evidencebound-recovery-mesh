@@ -1,0 +1,52 @@
+name: deploy-cloud-run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  GOOGLE_CLOUD_LOCATION: global
+  RECOVERY_MESH_MODEL: gemini-3.5-flash
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main branch
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "BLOCKER=deployment workflow is restricted to refs/heads/main" >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Verify deployment identity and target
+        run: |
+          gcloud auth list --filter=status:ACTIVE --format='value(account)'
+          test "$(gcloud config get-value project)" = "$GOOGLE_CLOUD_PROJECT"
+          test "$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')" = "457699623691"
+          test "$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(labels.hackathon)')" = "all-things-agentic-2026"
+
+      - name: Deploy and run live acceptance smoke
+        run: ./scripts/deploy-cloud-run.sh

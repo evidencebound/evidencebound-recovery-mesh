@@ -7,6 +7,8 @@ VERTEX_LOCATION="${GOOGLE_CLOUD_LOCATION:-global}"
 SERVICE="${RECOVERY_MESH_SERVICE:-evidencebound-recovery-mesh}"
 MODEL="${RECOVERY_MESH_MODEL:-gemini-3.5-flash}"
 LIVE_MODEL_CALL_BUDGET="${RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET:-64}"
+JUDGE_SECRET_NAME="${RECOVERY_MESH_JUDGE_SECRET_NAME:-recovery-mesh-judge-key}"
+JUDGE_SECRET_VERSION="${RECOVERY_MESH_JUDGE_SECRET_VERSION:-1}"
 RUNTIME_SA_NAME="${RECOVERY_MESH_RUNTIME_SA:-recovery-mesh-runtime}"
 BUILD_SA_NAME="${RECOVERY_MESH_BUILD_SA:-recovery-mesh-build}"
 RUNTIME_SA="${RUNTIME_SA_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
@@ -17,15 +19,33 @@ BUILD_SA_RESOURCE="projects/${GOOGLE_CLOUD_PROJECT}/serviceAccounts/${BUILD_SA}"
   echo "BLOCKER=RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET must be a positive integer" >&2
   exit 4
 }
+[[ "$JUDGE_SECRET_VERSION" =~ ^[1-9][0-9]*$ ]] || {
+  echo "BLOCKER=RECOVERY_MESH_JUDGE_SECRET_VERSION must be a positive integer" >&2
+  exit 5
+}
 
-# First-time API/IAM/WIF setup is intentionally separated into gcp-owner-bootstrap.sh so the
-# recurring deploy identity cannot mutate project IAM or enable services.
+# First-time API/IAM/WIF/secret setup is intentionally separated into gcp-owner-bootstrap.sh so
+# the recurring deploy identity cannot mutate project IAM or enable services.
 "$(dirname "$0")/gcp-live-preflight.sh"
+
+# Retrieve the protected smoke credential without printing it. First owner bootstrap can pass it
+# through the process environment; recurring keyless deploys receive secret-level accessor only.
+if [ -z "${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE:-}" ]; then
+  export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(
+    gcloud secrets versions access "$JUDGE_SECRET_VERSION" \
+      --secret "$JUDGE_SECRET_NAME" \
+      --project "$GOOGLE_CLOUD_PROJECT"
+  )"
+fi
+[ -n "$RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE" ] || {
+  echo "BLOCKER=judge key unavailable for protected production smoke" >&2
+  exit 6
+}
 
 PUBLIC_ARGS=()
 if [ "${RECOVERY_MESH_PUBLIC_BOOTSTRAP:-0}" = "1" ]; then
-  # Current Cloud Run guidance recommends disabling the Invoker IAM check for a public service.
-  # This requires an owner/admin permission and is therefore never used by recurring CI.
+  # The public service exposes only the UI/health unauthenticated. Run and mutation APIs enforce
+  # the application-level key stored in Secret Manager.
   PUBLIC_ARGS+=(--no-invoker-iam-check)
 fi
 
@@ -43,6 +63,7 @@ gcloud run deploy "$SERVICE" \
   --cpu 1 \
   --timeout 300 \
   --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},GOOGLE_CLOUD_LOCATION=${VERTEX_LOCATION},RECOVERY_MESH_MODEL=${MODEL},RECOVERY_MESH_EXECUTION_MODE=google_adk,RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET=${LIVE_MODEL_CALL_BUDGET}" \
+  --update-secrets "RECOVERY_MESH_JUDGE_KEY=${JUDGE_SECRET_NAME}:${JUDGE_SECRET_VERSION}" \
   --labels "app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026"
 
 URL="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.url)')"
@@ -52,4 +73,6 @@ printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 printf 'BUILD_SERVICE_ACCOUNT=%s\n' "$BUILD_SA"
 printf 'LIVE_MODEL_CALL_BUDGET_PER_PROCESS=%s\n' "$LIVE_MODEL_CALL_BUDGET"
+printf 'JUDGE_ACCESS=SECRET_MANAGER_PROTECTED\n'
 "$(dirname "$0")/smoke-cloud-run.sh" "$URL"
+unset RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE

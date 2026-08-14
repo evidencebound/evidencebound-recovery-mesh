@@ -1,0 +1,118 @@
+name: gcp-edge-audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/gcp-edge-audit.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh-audit
+  AUDITOR_SERVICE_ACCOUNT: recovery-mesh-auditor@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.AUDITOR_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Correlate Cloud Run edge probes with revision logs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="$GOOGLE_CLOUD_PROJECT"
+          REGION="$GOOGLE_CLOUD_RUN_REGION"
+          SERVICE="$RECOVERY_MESH_SERVICE"
+          START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          echo "EDGE_AUDIT_MODE=READ_ONLY"
+          echo "EDGE_AUDIT_START=${START_UTC}"
+
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --silent --show-error --fail-with-body \
+            --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+            "https://run.googleapis.com/v2/projects/${PROJECT}/locations/${REGION}/services/${SERVICE}" \
+            --output /tmp/service.json
+          unset ACCESS_TOKEN
+
+          jq '{generation,observedGeneration,reconciling,terminalCondition,conditions,latestReadyRevision,latestCreatedRevision,traffic,trafficStatuses,uri,urls,ingress,invokerIamDisabled,defaultUriDisabled}' /tmp/service.json
+
+          mapfile -t URLS < <(jq -r '([.uri] + (.urls // [])) | map(select(. != null and . != "")) | unique[]' /tmp/service.json)
+          printf 'EDGE_URL_COUNT=%s\n' "${#URLS[@]}"
+
+          probe_url() {
+            local base="$1"
+            local path="$2"
+            local safe_name
+            safe_name="$(printf '%s%s' "$base" "$path" | sha256sum | cut -c1-12)"
+            local trace_id
+            trace_id="$(openssl rand -hex 16)"
+            local span_id
+            span_id="$(openssl rand -hex 8)"
+            echo "===== EDGE_PROBE base=${base} path=${path} trace=${trace_id} ====="
+            set +e
+            curl --silent --show-error --location \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --header "X-Cloud-Trace-Context: ${trace_id}/${span_id};o=1" \
+              --header "User-Agent: evidencebound-recovery-mesh-edge-audit/1" \
+              --dump-header "/tmp/${safe_name}.headers" \
+              --output "/tmp/${safe_name}.body" \
+              --write-out 'HTTP_STATUS=%{http_code}\nREMOTE_IP=%{remote_ip}\nURL_EFFECTIVE=%{url_effective}\n' \
+              "${base}${path}"
+            rc=$?
+            set -e
+            echo "CURL_RC=${rc}"
+            echo "--- headers ---"
+            sed -n '1,60p' "/tmp/${safe_name}.headers" || true
+            echo "--- body ---"
+            sed -n '1,80p' "/tmp/${safe_name}.body" || true
+            echo
+          }
+
+          for url in "${URLS[@]}"; do
+            probe_url "$url" "/"
+            probe_url "$url" "/healthz"
+          done
+
+          sleep 5
+
+          echo "===== REVISION_REQUEST_LOGS_SINCE_PROBE ====="
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="'"$SERVICE"'" AND timestamp>="'"$START_UTC"'"' \
+            --project="$PROJECT" \
+            --limit=100 \
+            --order=asc \
+            --format='yaml(timestamp,severity,logName,httpRequest.requestMethod,httpRequest.requestUrl,httpRequest.status,httpRequest.userAgent,httpRequest.remoteIp,trace,textPayload,jsonPayload.message)' || true
+
+          echo "===== VPC_SC_HTTP_INGRESS_POLICY_LOGS_SINCE_PROBE ====="
+          gcloud logging read \
+            'resource.type="audited_resource" AND logName="projects/'"$PROJECT"'/logs/cloudaudit.googleapis.com%2Fpolicy" AND resource.labels.method="run.googleapis.com/HttpIngress" AND timestamp>="'"$START_UTC"'"' \
+            --project="$PROJECT" \
+            --limit=100 \
+            --order=asc \
+            --format='yaml(timestamp,severity,protoPayload.status,protoPayload.authenticationInfo.principalEmail,protoPayload.metadata,resource.labels)' || true
+
+          echo "EDGE_AUDIT_COMPLETE=TRUE"
+          echo "CLOUD_RUN_MUTATIONS=NONE"
+          echo "BUILD_OR_DEPLOY=NONE"

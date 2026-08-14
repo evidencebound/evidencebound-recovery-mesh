@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from recovery_mesh.graph import TrustGraph
 from recovery_mesh.models import TrustBreak, TrustBreakClass, TrustStatus
 from recovery_mesh.recovery import RecoveryEngine, RecoveryInvariantError, SideEffectLedger
@@ -67,7 +69,11 @@ def test_recovery_requires_topological_dependency_verification() -> None:
     engine.verify_recomputed("history_snapshot", structured_output={"sample_size": 20})
     stat = engine.verify_recomputed(
         "statistician",
-        structured_output={"claim": "recomputed", "evidence_ids": ["history"], "confidence": 0.61},
+        structured_output={
+            "claim": "recomputed",
+            "evidence_ids": ["history"],
+            "confidence": 0.61,
+        },
     )
     assert stat.verification_status is TrustStatus.VERIFIED
 
@@ -106,3 +112,20 @@ def test_idempotency_key_rejects_conflicting_replay() -> None:
         assert "different payload" in str(exc)
     else:
         raise AssertionError("conflicting replay must fail")
+
+
+def test_concurrent_duplicate_side_effect_has_exactly_one_original_commit() -> None:
+    ledger = SideEffectLedger()
+
+    def commit() -> object:
+        return ledger.commit("concurrent-key", {"verdict": "safe"})
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        receipts = list(pool.map(lambda _: commit(), range(24)))
+
+    originals = [item for item in receipts if not item.duplicate_suppressed]
+    duplicates = [item for item in receipts if item.duplicate_suppressed]
+    assert len(originals) == 1
+    assert len(duplicates) == 23
+    assert {item.payload_digest for item in receipts} == {originals[0].payload_digest}
+    assert {item.committed_at for item in receipts} == {originals[0].committed_at}

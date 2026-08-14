@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+.env
+.env.*
+!.env.example
+evidence/runtime/
+
+# Ignore generated credentials from google-github-actions/auth
+gha-creds-*.json

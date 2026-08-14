@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EvidenceBound Recovery Mesh</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">EVIDENCEBOUND · FLIGHT RECORDER</div>
+        <h1>Recovery Mesh</h1>
+        <p>Trust-aware flight recorder and self-healing engine for autonomous agent fleets.</p>
+      </div>
+      <div class="hero-status">
+        <span id="runState" class="pill neutral">NO RUN</span>
+        <span id="executionProvider" class="pill neutral">PROVIDER —</span>
+        <span id="runId" class="mono">—</span>
+      </div>
+    </header>
+
+    <section class="judge-moment" id="judgeMoment">
+      <span class="signal-dot"></span>
+      <div>
+        <strong id="momentTitle">READY FOR PROOF OF ACTION</strong>
+        <span id="momentBody">Start a verified fleet, then inject a controlled trust break.</span>
+      </div>
+    </section>
+
+    <section class="controls panel">
+      <div class="control-group">
+        <button id="startRun" class="primary">1 · Start verified fleet</button>
+      </div>
+      <div class="control-group">
+        <label>2 · Controlled trust break</label>
+        <div class="button-row">
+          <button data-fault="stale_evidence" disabled>Stale evidence</button>
+          <button data-fault="malformed_worker" disabled>Malformed worker</button>
+          <button data-fault="policy_drift" disabled>Policy drift</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <button id="recover" class="accent" disabled>3 · Autonomous selective recovery</button>
+      </div>
+    </section>
+
+    <section class="metrics" id="metrics">
+      <article class="metric"><span>Verified</span><strong id="verifiedCount">0</strong></article>
+      <article class="metric"><span>Recompute</span><strong id="recomputeCount">0</strong></article>
+      <article class="metric"><span>Blocked</span><strong id="blockedCount">0</strong></article>
+      <article class="metric"><span>Reusable</span><strong id="reusableCount">0</strong></article>
+    </section>
+
+    <section class="layout">
+      <article class="panel graph-panel">
+        <div class="panel-head">
+          <div><span class="eyebrow">TRUST GRAPH</span><h2>Blast radius</h2></div>
+          <div class="legend">
+            <span><i class="dot verified"></i>VERIFIED</span>
+            <span><i class="dot invalidated"></i>INVALIDATED</span>
+            <span><i class="dot recompute"></i>RECOMPUTE</span>
+            <span><i class="dot blocked"></i>BLOCKED</span>
+          </div>
+        </div>
+        <div class="graph-wrap" id="graphWrap">
+          <svg id="edges" aria-hidden="true"></svg>
+          <div id="graph" class="graph"></div>
+        </div>
+      </article>
+
+      <aside class="panel recorder-panel">
+        <div class="panel-head"><div><span class="eyebrow">CAUSAL TRACE</span><h2>Flight Recorder</h2></div></div>
+        <div id="events" class="events"><p class="empty">No events yet.</p></div>
+      </aside>
+    </section>
+
+    <section class="panel benchmark-panel">
+      <div class="panel-head">
+        <div><span class="eyebrow">MEASURED ECONOMICS</span><h2>Restart vs selective recovery</h2></div>
+        <span id="measurementClass" class="pill neutral">NO RECEIPT</span>
+      </div>
+      <div id="benchmark" class="benchmark-empty">
+        Run a recovery to produce a receipt. Local deterministic receipts never claim model calls or token savings.
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

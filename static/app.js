@@ -1,0 +1,151 @@
+const state = { run: null };
+const graphOrder = {
+  fixture_snapshot: [1,1], history_snapshot: [1,2], policy_rules: [1,3],
+  statistician: [2,1], scout: [2,3], skeptic: [3,2], orchestrator: [4,2], publish_action: [5,2]
+};
+const qs = (s) => document.querySelector(s);
+const qsa = (s) => [...document.querySelectorAll(s)];
+
+async function request(path, opts={}) {
+  const r = await fetch(path, {method: opts.method || 'GET', headers: {'Content-Type':'application/json'}});
+  if (!r.ok) throw new Error((await r.json()).detail || `${r.status}`);
+  return r.json();
+}
+
+function counts(run) {
+  const result = {VERIFIED:0, INVALIDATED:0, RECOMPUTE:0, BLOCKED:0};
+  run.checkpoints.forEach(c => result[c.status]++);
+  return result;
+}
+
+function render(run) {
+  state.run = run;
+  qs('#runId').textContent = run.run_id;
+  const provider = run.execution?.provider || 'unknown';
+  const model = run.execution?.model ? ` · ${run.execution.model}` : '';
+  qs('#executionProvider').textContent = `${provider}${model}`.toUpperCase();
+  qs('#executionProvider').className = 'pill ' + (run.execution?.live_google ? 'ok' : 'neutral');
+  const c = counts(run);
+  qs('#verifiedCount').textContent = c.VERIFIED;
+  qs('#recomputeCount').textContent = c.RECOMPUTE + c.INVALIDATED;
+  qs('#blockedCount').textContent = c.BLOCKED;
+  qs('#reusableCount').textContent = run.active_blast_radius?.reusable_checkpoints?.length || 0;
+  qs('#runState').textContent = c.BLOCKED ? 'ACTION BLOCKED' : (run.benchmark ? 'RECOVERED' : 'VERIFIED BASELINE');
+  qs('#runState').className = 'pill ' + (run.benchmark ? 'ok' : 'neutral');
+  renderGraph(run);
+  renderEvents(run.events);
+  renderBenchmark(run.benchmark);
+  qsa('[data-fault]').forEach(b => b.disabled = !!run.active_blast_radius);
+  qs('#recover').disabled = !run.active_blast_radius;
+
+  const moment = qs('#judgeMoment');
+  if (run.active_blast_radius) {
+    moment.className = 'judge-moment alert';
+    qs('#momentTitle').textContent = 'TRUST BREAK DETECTED → UNSAFE ACTION BLOCKED';
+    qs('#momentBody').textContent = `Source: ${run.active_blast_radius.invalidated_source}. Blast radius computed; unaffected work stays reusable.`;
+  } else if (run.benchmark) {
+    moment.className = 'judge-moment recovered';
+    qs('#momentTitle').textContent = 'SELECTIVE RECOVERY VERIFIED → ACTION RESUMED';
+    qs('#momentBody').textContent = 'Affected branch recomputed in dependency order; reusable checkpoints were preserved.';
+  } else {
+    moment.className = 'judge-moment';
+    qs('#momentTitle').textContent = 'VERIFIED FLEET BASELINE';
+    qs('#momentBody').textContent = 'All checkpoint dependencies passed deterministic trust gates.';
+  }
+}
+
+function renderGraph(run) {
+  const graph = qs('#graph');
+  const reusable = new Set(run.active_blast_radius?.reusable_checkpoints || []);
+  graph.innerHTML = run.checkpoints.map(cp => {
+    const pos = graphOrder[cp.checkpoint_id] || [1,1];
+    const deps = cp.dependencies.length ? cp.dependencies.join(' · ') : 'root';
+    return `<article id="node-${cp.checkpoint_id}" class="node ${reusable.has(cp.checkpoint_id) ? 'reused' : ''}" data-status="${cp.status}" style="grid-column:${pos[0]};grid-row:${pos[1]}">
+      <div class="kind">${cp.kind}${reusable.has(cp.checkpoint_id) ? ' · REUSED' : ''}</div>
+      <h3>${cp.checkpoint_id.replaceAll('_',' ')}</h3>
+      <div class="status">${cp.status}</div>
+      <div class="deps">deps: ${deps}</div>
+    </article>`;
+  }).join('');
+  requestAnimationFrame(() => drawEdges(run));
+}
+
+function drawEdges(run) {
+  const wrap = qs('#graphWrap'); const svg = qs('#edges');
+  const box = wrap.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${wrap.scrollWidth} ${wrap.scrollHeight}`);
+  svg.setAttribute('width', wrap.scrollWidth); svg.setAttribute('height', wrap.scrollHeight);
+  const affected = new Set(run.active_blast_radius?.contaminated_checkpoints || []);
+  if (run.active_blast_radius?.invalidated_source) affected.add(run.active_blast_radius.invalidated_source);
+  let paths = '';
+  run.checkpoints.forEach(cp => cp.dependencies.forEach(dep => {
+    const a = qs(`#node-${dep}`)?.getBoundingClientRect(); const b = qs(`#node-${cp.checkpoint_id}`)?.getBoundingClientRect();
+    if (!a || !b) return;
+    const x1 = a.right - box.left + wrap.scrollLeft, y1 = a.top + a.height/2 - box.top + wrap.scrollTop;
+    const x2 = b.left - box.left + wrap.scrollLeft, y2 = b.top + b.height/2 - box.top + wrap.scrollTop;
+    const dx = Math.max(24, (x2-x1)*0.45);
+    const cls = affected.has(dep) && affected.has(cp.checkpoint_id) ? 'edge affected' : 'edge';
+    paths += `<path class="${cls}" d="M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}"/>`;
+  }));
+  svg.innerHTML = paths;
+}
+
+function renderEvents(events) {
+  const root = qs('#events');
+  if (!events.length) { root.innerHTML = '<p class="empty">No events yet.</p>'; return; }
+  root.innerHTML = [...events].reverse().map(e => {
+    const cls = e.event_type.includes('TRUST_BREAK') ? 'trust' : e.event_type.includes('BLOCKED') ? 'block' : e.event_type.includes('RECOVERY') || e.event_type.includes('RESUMED') || e.event_type.includes('REVERIFIED') ? 'recovery' : '';
+    return `<div class="event ${cls}"><div class="event-index">${String(e.event_id).padStart(2,'0')}</div><div><strong>${e.event_type}</strong><p>${e.message}${e.checkpoint_id ? ` · ${e.checkpoint_id}` : ''}</p></div></div>`;
+  }).join('');
+}
+
+function renderBenchmark(b) {
+  const root = qs('#benchmark'); const pill = qs('#measurementClass');
+  if (!b) {
+    root.className='benchmark-empty';
+    root.textContent='Run a recovery to produce a receipt. Deterministic test mode never claims Gemini model calls or token savings.';
+    pill.textContent='NO RECEIPT'; pill.className='pill neutral'; return;
+  }
+  const reduction = Math.round(b.execution_reduction_ratio * 100);
+  const live = b.measurement_class.startsWith('google_adk_live');
+  const modelReduction = b.model_call_reduction_ratio == null ? null : Math.round(b.model_call_reduction_ratio * 100);
+  const tokenReduction = b.input_token_reduction_ratio == null ? null : Math.round(b.input_token_reduction_ratio * 100);
+  root.className='benchmark-grid';
+  root.innerHTML = `
+    <div class="bench"><span>Full restart agents</span><strong>${b.full_restart_agent_executions}</strong></div>
+    <div class="bench"><span>Selective reruns</span><strong>${b.selective_recovery_agent_executions}</strong></div>
+    <div class="bench"><span>Agents reused</span><strong>${b.reused_agent_checkpoints}</strong></div>
+    <div class="bench"><span>Execution reduction</span><strong>${reduction}%*</strong></div>`;
+  if (live) {
+    root.insertAdjacentHTML('beforeend', `
+      <div class="bench"><span>Full restart model calls</span><strong>${b.full_restart_model_calls ?? 'n/a'}</strong></div>
+      <div class="bench"><span>Selective model calls</span><strong>${b.selective_recovery_model_calls ?? 'n/a'}</strong></div>
+      <div class="bench"><span>Model-call reduction</span><strong>${modelReduction == null ? 'n/a' : modelReduction + '%'}</strong></div>
+      <div class="bench"><span>Input-token reduction</span><strong>${tokenReduction == null ? 'n/a' : tokenReduction + '%'}</strong></div>`);
+  }
+  pill.textContent=b.measurement_class.toUpperCase(); pill.className='pill ' + (live ? 'ok' : 'neutral');
+  const note = live
+    ? '* Measured only for this controlled run. Model-call/token fields come from live ADK event usage when available; no general savings claim.'
+    : '* Measured checkpoint-execution reduction in this controlled deterministic test scenario only. Gemini calls/tokens are intentionally unclaimed.';
+  root.insertAdjacentHTML('beforeend', `<p class="benchmark-empty" style="grid-column:1/-1;margin:2px 0 0">${note}</p>`);
+}
+
+
+qs('#startRun').addEventListener('click', async () => { try { render(await request('/api/runs',{method:'POST'})); } catch(e) { alert(e.message); } });
+qsa('[data-fault]').forEach(btn => btn.addEventListener('click', async () => { if(!state.run) return; try { render(await request(`/api/runs/${state.run.run_id}/fault/${btn.dataset.fault}`,{method:'POST'})); } catch(e) { alert(e.message); } }));
+qs('#recover').addEventListener('click', async () => { try { render(await request(`/api/runs/${state.run.run_id}/recover`,{method:'POST'})); } catch(e) { alert(e.message); } });
+window.addEventListener('resize', () => state.run && drawEdges(state.run));
+
+(async function optionalVisualSmokeHarness(){
+  const p = new URLSearchParams(location.search);
+  const scenario = p.get('autorun');
+  if (!scenario) return;
+  try {
+    let run = await request('/api/runs', {method:'POST'});
+    run = await request(`/api/runs/${run.run_id}/fault/${scenario}`, {method:'POST'});
+    if (p.get('recover') === '1') run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});
+    render(run);
+  } catch (e) {
+    console.error('visual smoke harness failed', e);
+  }
+})();

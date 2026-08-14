@@ -11,6 +11,8 @@ MODEL="${RECOVERY_MESH_MODEL:-gemini-3.5-flash}"
 RUNTIME_SA_NAME="${RECOVERY_MESH_RUNTIME_SA:-recovery-mesh-runtime}"
 BUILD_SA_NAME="${RECOVERY_MESH_BUILD_SA:-recovery-mesh-build}"
 DEPLOYER_SA_NAME="${RECOVERY_MESH_DEPLOYER_SA:-recovery-mesh-deployer}"
+JUDGE_SECRET_NAME="${RECOVERY_MESH_JUDGE_SECRET_NAME:-recovery-mesh-judge-key}"
+JUDGE_SECRET_VERSION="${RECOVERY_MESH_JUDGE_SECRET_VERSION:-1}"
 POOL_ID="${RECOVERY_MESH_WIF_POOL:-github-actions}"
 PROVIDER_ID="${RECOVERY_MESH_WIF_PROVIDER:-recovery-mesh}"
 IAM_WAIT_SECONDS="${RECOVERY_MESH_IAM_PROPAGATION_WAIT_SECONDS:-30}"
@@ -19,6 +21,7 @@ EXPECTED_PROJECT_NUMBER="${RECOVERY_MESH_EXPECTED_PROJECT_NUMBER:-457699623691}"
 EXPECTED_HACKATHON_LABEL="${RECOVERY_MESH_EXPECTED_HACKATHON_LABEL:-all-things-agentic-2026}"
 
 command -v gcloud >/dev/null || { echo "BLOCKER=gcloud CLI not installed" >&2; exit 2; }
+command -v python3 >/dev/null || { echo "BLOCKER=python3 not installed" >&2; exit 2; }
 
 ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
 [ -n "$ACCOUNT" ] || { echo "BLOCKER=no active gcloud account" >&2; exit 3; }
@@ -82,6 +85,7 @@ gcloud services enable \
   iamcredentials.googleapis.com \
   sts.googleapis.com \
   serviceusage.googleapis.com \
+  secretmanager.googleapis.com \
   --project "$PROJECT_ID"
 
 ensure_service_account() {
@@ -98,7 +102,7 @@ ensure_service_account() {
 ensure_service_account "$RUNTIME_SA_NAME" "$RUNTIME_SA" "EvidenceBound Recovery Mesh runtime"
 ensure_service_account "$BUILD_SA_NAME" "$BUILD_SA" "EvidenceBound Recovery Mesh build"
 
-# Runtime identity: Gemini/Vertex invocation only.
+# Runtime identity: Gemini/Vertex invocation only at project scope.
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member "serviceAccount:${RUNTIME_SA}" \
   --role roles/aiplatform.user \
@@ -112,6 +116,46 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --role roles/run.builder \
   --condition=None \
   --quiet >/dev/null
+
+# Generate the judge API key exactly once and keep it in Secret Manager. Never print the value.
+if ! gcloud secrets describe "$JUDGE_SECRET_NAME" --project "$PROJECT_ID" >/dev/null 2>&1; then
+  JUDGE_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  printf '%s' "$JUDGE_KEY" | gcloud secrets create "$JUDGE_SECRET_NAME" \
+    --project "$PROJECT_ID" \
+    --data-file=- \
+    --replication-policy=automatic \
+    --labels=app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026 \
+    >/dev/null
+  unset JUDGE_KEY
+fi
+
+JUDGE_SECRET_STATE="$(
+  gcloud secrets versions describe "$JUDGE_SECRET_VERSION" \
+    --secret "$JUDGE_SECRET_NAME" \
+    --project "$PROJECT_ID" \
+    --format='value(state)' 2>/dev/null || true
+)"
+[ "$JUDGE_SECRET_STATE" = "ENABLED" ] || {
+  echo "BLOCKER=judge secret version ${JUDGE_SECRET_VERSION} is not ENABLED" >&2
+  exit 9
+}
+
+gcloud secrets add-iam-policy-binding "$JUDGE_SECRET_NAME" \
+  --project "$PROJECT_ID" \
+  --member "serviceAccount:${RUNTIME_SA}" \
+  --role roles/secretmanager.secretAccessor \
+  --condition=None \
+  --quiet >/dev/null
+
+# First-deployment smoke receives the secret through this process environment only. The value
+# is neither printed nor committed; Cloud Run itself references the same Secret Manager version.
+export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(
+  gcloud secrets versions access "$JUDGE_SECRET_VERSION" \
+    --secret "$JUDGE_SECRET_NAME" \
+    --project "$PROJECT_ID"
+)"
+export RECOVERY_MESH_JUDGE_SECRET_NAME="$JUDGE_SECRET_NAME"
+export RECOVERY_MESH_JUDGE_SECRET_VERSION="$JUDGE_SECRET_VERSION"
 
 export GOOGLE_CLOUD_PROJECT="$PROJECT_ID"
 export GOOGLE_CLOUD_RUN_REGION="$RUN_REGION"
@@ -129,11 +173,11 @@ if [ "$IAM_WAIT_SECONDS" -gt 0 ]; then
   sleep "$IAM_WAIT_SECONDS"
 fi
 
-# Public judge access is an owner-only first-deployment action. Subsequent CI deployments omit
-# the IAM-changing flag and preserve the service's public-access setting.
+# Public GET access is an owner-only first-deployment action. State-changing/run APIs remain
+# protected by the application-level judge key stored in Secret Manager.
 export RECOVERY_MESH_PUBLIC_BOOTSTRAP=1
 "$(dirname "$0")/deploy-cloud-run.sh"
-unset RECOVERY_MESH_PUBLIC_BOOTSTRAP
+unset RECOVERY_MESH_PUBLIC_BOOTSTRAP RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE
 
 # Establish keyless GitHub -> Google Cloud deployment auth after the first live deployment.
 ensure_service_account "$DEPLOYER_SA_NAME" "$DEPLOYER_SA" "EvidenceBound Recovery Mesh GitHub deployer"
@@ -158,6 +202,15 @@ for TARGET_SA in "$RUNTIME_SA" "$BUILD_SA"; do
     --condition=None \
     --quiet >/dev/null
 done
+
+# Keyless deploy CI may read only the dedicated judge secret so it can execute the protected
+# production smoke test after deployment.
+gcloud secrets add-iam-policy-binding "$JUDGE_SECRET_NAME" \
+  --project "$PROJECT_ID" \
+  --member "serviceAccount:${DEPLOYER_SA}" \
+  --role roles/secretmanager.secretAccessor \
+  --condition=None \
+  --quiet >/dev/null
 
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" \
   --project "$PROJECT_ID" --location=global >/dev/null 2>&1; then
@@ -199,5 +252,8 @@ printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 printf 'BUILD_SERVICE_ACCOUNT=%s\n' "$BUILD_SA"
 printf 'GITHUB_DEPLOYER_SERVICE_ACCOUNT=%s\n' "$DEPLOYER_SA"
 printf 'WORKLOAD_IDENTITY_PROVIDER=%s\n' "$PROVIDER_RESOURCE"
+printf 'JUDGE_SECRET_NAME=%s\n' "$JUDGE_SECRET_NAME"
+printf 'JUDGE_SECRET_VERSION=%s\n' "$JUDGE_SECRET_VERSION"
+printf 'JUDGE_KEY_RETRIEVE_COMMAND=gcloud secrets versions access %s --secret=%s --project=%s\n' "$JUDGE_SECRET_VERSION" "$JUDGE_SECRET_NAME" "$PROJECT_ID"
 printf 'GITHUB_REPOSITORY=%s\n' "$REPO"
 printf 'GITHUB_REPOSITORY_ID=%s\n' "$REPO_ID"

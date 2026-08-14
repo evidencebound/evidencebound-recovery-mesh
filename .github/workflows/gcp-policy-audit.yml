@@ -2,6 +2,11 @@ name: gcp-policy-audit
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/gcp-policy-audit.yml
 
 permissions:
   contents: read

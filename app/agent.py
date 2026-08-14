@@ -12,6 +12,8 @@ from google.adk.apps import App
 from google.adk.models import Gemini
 from google.genai import types
 
+from recovery_mesh.verification import WorkerOutput
+
 MODEL = os.getenv("RECOVERY_MESH_MODEL", "gemini-3.5-flash")
 
 
@@ -76,6 +78,7 @@ dependency, and side-effect checks.
         description=descriptions[agent_id],
         instruction=instruction,
         generate_content_config=_generation_config(),
+        output_schema=WorkerOutput,
     )
 
 

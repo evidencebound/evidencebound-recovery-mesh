@@ -16,7 +16,9 @@ class GoogleAdkExecutor:
     is_live_google = True
 
     def __init__(self, model_name: str | None = None) -> None:
-        self.model_name: str = model_name or os.getenv("RECOVERY_MESH_MODEL", "gemini-3.5-flash")
+        self.model_name: str | None = model_name or os.getenv(
+            "RECOVERY_MESH_MODEL", "gemini-3.5-flash"
+        )
 
     def execute(
         self,
@@ -56,7 +58,9 @@ class GoogleAdkExecutor:
                 "google-adk/google-genai is unavailable; live Google execution cannot start"
             ) from exc
 
-        agent = build_execution_agent(checkpoint_id, model_name=self.model_name)
+        agent = build_execution_agent(
+            checkpoint_id, model_name=self.model_name or "gemini-3.5-flash"
+        )
         app_name = f"recovery_mesh_{checkpoint_id}"
         runner = InMemoryRunner(agent=agent, app_name=app_name)
         start = perf_counter_ns()

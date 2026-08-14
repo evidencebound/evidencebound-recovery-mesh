@@ -6,16 +6,21 @@ This document is the canonical source for the final Devpost architecture diagram
 
 ```mermaid
 flowchart LR
-  J[Judge / operator] --> UI[Flight Recorder UI + FastAPI]
-  UI --> C[Recovery Mesh Controller]
+  J[Judge / operator] --> UI[Public Flight Recorder UI + health]
+  J -->|private judge key header| AUTH[Judge API Gate]
+  SM[Secret Manager\nrecovery-mesh-judge-key] -. secret env at instance start .-> AUTH
+  UI --> AUTH
+  AUTH --> C[Recovery Mesh Controller]
 
   subgraph CR[Google Cloud Run · evidencebound-recovery-mesh]
     UI
+    AUTH
     C
     TG[Deterministic Trust Graph]
     V[Verifier: schema + integrity + provenance + policy]
     BR[Exact Blast-Radius Planner]
     AG[Fail-Closed Action Gate + Idempotency Ledger]
+    LB[Process-local Live Model-Call Guard]
     FR[Flight Recorder Event Stream]
 
     C --> TG
@@ -34,10 +39,11 @@ flowchart LR
     S4[Orchestrator]
   end
 
-  C --> S1
-  C --> S2
-  C --> S3
-  C --> S4
+  C --> LB
+  LB --> S1
+  LB --> S2
+  LB --> S3
+  LB --> S4
 
   S1 --> VX[Vertex AI · Gemini 3.5 Flash]
   S2 --> VX
@@ -54,7 +60,10 @@ flowchart LR
 
   GH[GitHub Actions · main] -. OIDC .-> WIF[Workload Identity Federation]
   WIF -. impersonates bounded deployer .-> CR
+  WIF -. protected smoke only .-> SM
 ```
+
+The Cloud Run URL can remain publicly reachable for judge usability while state-changing/run APIs require the private testing key supplied through Devpost's judge-only instructions. The key is generated during first bootstrap, stored in Secret Manager, and never committed or embedded in the UI. The browser keeps an entered key only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
 
 ## Trust authority boundary
 
@@ -151,6 +160,12 @@ REUSED AGENT: Scout
 
 The same runtime contracts handle controlled fault injection and normal verification failures; controlled faults are labeled as fixtures and are never presented as live provider truth.
 
+## Public judge boundary
+
+Unauthenticated requests may load the Flight Recorder and `/healthz`. Run snapshots and all POST operations (`start`, `fault`, `recover`) pass through the judge API gate. Live mode without a configured judge secret returns `503`; a missing/incorrect supplied key returns `401` before an agent/model call.
+
+A second guard bounds live provider reservations per Cloud Run process (`64` by deployment default). That guard reduces stray-call exposure but is explicitly **not** a billing/spend cap because a new process/revision resets it.
+
 ## Google Cloud isolation
 
 Canonical deployment target:
@@ -161,13 +176,14 @@ Project number: 457699623691
 Cloud Run region: europe-west1
 Vertex location: global
 Model target: gemini-3.5-flash
+Judge secret: recovery-mesh-judge-key:1
 ```
 
 First bootstrap creates separate identities:
 
-- `recovery-mesh-runtime`: Vertex invocation runtime;
+- `recovery-mesh-runtime`: Vertex invocation runtime + accessor only to the dedicated judge secret;
 - `recovery-mesh-build`: source-build identity;
-- `recovery-mesh-deployer`: keyless GitHub deployment identity.
+- `recovery-mesh-deployer`: keyless GitHub deployment identity + accessor to the dedicated judge secret only for protected deployment smoke.
 
 The bootstrap checks exact project identity, project number, hackathon label, lifecycle state, and billing before mutation. Recurring GitHub deployment is restricted by Workload Identity Federation to repository ID `1334014784`, owner `moneyparking`, and `refs/heads/main`.
 

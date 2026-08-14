@@ -20,7 +20,7 @@ execution=x["execution"]
 assert execution["provider"]=="google_adk_vertex", execution
 assert execution["live_google"] is True, execution
 assert execution["model"] in {"gemini-3.5-flash","gemini-3.6-flash"}, execution
-print(f"HEALTH=PASS provider={execution[\"provider\"]} model={execution[\"model\"]} judge_access=protected")
+print("HEALTH=PASS provider={} model={} judge_access=protected".format(execution["provider"], execution["model"]))
 '
 
 UNAUTHORIZED_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST "${URL}/api/runs")"
@@ -76,9 +76,9 @@ assert b["reused_agent_checkpoints"] == 1, b
 assert b["measurement_class"].startswith("google_adk_live"), b
 print("SELECTIVE_RECOVERY=PASS rerun=3 reused=1 final_action=VERIFIED")
 if b.get("full_restart_model_calls") is not None and b.get("selective_recovery_model_calls") is not None:
-    print(f"MODEL_CALLS full_restart={b[\"full_restart_model_calls\"]} selective={b[\"selective_recovery_model_calls\"]}")
+    print("MODEL_CALLS full_restart={} selective={}".format(b["full_restart_model_calls"], b["selective_recovery_model_calls"]))
 if b.get("full_restart_input_tokens") is not None and b.get("selective_recovery_input_tokens") is not None:
-    print(f"INPUT_TOKENS full_restart={b[\"full_restart_input_tokens\"]} selective={b[\"selective_recovery_input_tokens\"]}")
+    print("INPUT_TOKENS full_restart={} selective={}".format(b["full_restart_input_tokens"], b["selective_recovery_input_tokens"]))
 '
 
 printf 'RUN_ID=%s\n' "$RUN_ID"

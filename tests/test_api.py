@@ -8,7 +8,7 @@ client = TestClient(app)
 
 
 def test_health_and_judge_api_flow() -> None:
-    health = client.get("/healthz").json()
+    health = client.get("/health").json()
     assert health["status"] == "ok"
     assert health["judge_access_required"] is False
     assert health["judge_key_header"] == "X-Recovery-Mesh-Judge-Key"
@@ -31,7 +31,7 @@ def test_judge_key_protects_action_and_run_endpoints(monkeypatch) -> None:
     monkeypatch.setenv("RECOVERY_MESH_JUDGE_KEY", "judge-secret-for-test")
     headers = {"X-Recovery-Mesh-Judge-Key": "judge-secret-for-test"}
 
-    health = client.get("/healthz").json()
+    health = client.get("/health").json()
     assert health["judge_access_required"] is True
 
     assert client.post("/api/runs").status_code == 401
@@ -85,6 +85,6 @@ def test_second_fault_is_rejected_until_recovery() -> None:
 
 
 def test_health_exposes_execution_mode_without_claiming_google() -> None:
-    body = client.get("/healthz").json()
+    body = client.get("/health").json()
     assert body["execution"]["provider"] == "deterministic_test"
     assert body["execution"]["live_google"] is False

@@ -19,30 +19,49 @@ Submission draft ID: `1136853`
 | 28087 | What date did you start this project? | `08-14-26` | READY; git history begins in submission period |
 | 28141 | URL to public/private code repo | `https://github.com/moneyparking/evidencebound-recovery-mesh` | READY; public repository created |
 | 28089 | Reproducible Testing instructions in README? | `Yes` | READY; remote CI verified on public `main` |
-| 28088 | Hosted project URL | **PENDING** | Cloud Run not yet deployed |
+| 28088 | Hosted project URL | **PENDING** | isolated GCP project exists; billing/live deployment pending |
 | 28090 | Testing instructions | **PENDING FINAL URL** | draft below |
 | 28091 | Which Google SDK did you use? | `Agent Development Kit (ADK)` | source + remote ADK construction gate verified; live invocation still pending |
 | 28142 | Which Google Cloud Service(s) did you use? | `Cloud Run` | **DO NOT SUBMIT YET**; deployment pending |
-| 28092 | Architecture diagram | **PENDING FILE** | required upload |
+| 28092 | Architecture diagram | **PENDING FILE** | canonical source exists in `docs/ARCHITECTURE.md`; final upload must match deployed state |
 | 28143 | Which Google AI Models did you use? | `Gemini 3.5 Flash` | configured in source; **DO NOT SUBMIT YET** until live invocation receipt |
 | 28106 | Bonus content link | optional / pending | not started |
 | 28107 | Bonus social link | optional / pending | not started |
 
 ## Remote CI evidence
 
-Public `main` commit `b5c1568f208ad4f7e435a9497f34a7e5696ae4cd` passed GitHub Actions run `31791061902` on 2026-08-14:
+Public `main` commit `680299413b9711597aefccdaeff3fcc3a7fb9260` passed GitHub Actions run `31801003141` on 2026-08-14:
 
-- `google-adk==2.7.0` and Google Cloud dependencies installed from the declared package;
+- `google-adk==2.7.0` and declared Google Cloud dependencies installed;
 - Ruff: PASS;
 - strict mypy: PASS (`13 source files`);
 - pytest: **28 passed, 1 skipped**;
 - ADK catalog construction test: PASS with installed Google ADK;
 - branch-aware coverage: **91.91%** (required >=90%);
 - Python compile gate: PASS;
+- shell syntax validation for bootstrap/preflight/deploy/smoke scripts: PASS;
+- Flight Recorder JavaScript syntax gate (`node --check`): PASS;
+- deterministic synthetic fleet-scale receipt gate: **PASS — 100 agent checkpoints / 14 affected / 86 reused / 1 blocked action**;
 - committed-secret regex gate: PASS;
 - Docker image build: PASS.
 
 The one skipped test is the opt-in live Google integration test. A skipped live test is not a Gemini/Vertex PASS.
+
+## Google Cloud deployment evidence boundary
+
+Isolated hackathon target created on 2026-08-14:
+
+- Project ID: `evidencebound-rm-c977c1`
+- Project number: `457699623691`
+- Project name: `EvidenceBound Recovery Mesh`
+- Label: `hackathon=all-things-agentic-2026`
+- Lifecycle observed: `ACTIVE`
+
+The prior project `vocal-lightning-7dmzd` received a deletion request and was observed as `DELETE_REQUESTED`; it is not a Recovery Mesh deployment target.
+
+Bootstrap now fails closed before API/IAM mutation unless the exact project ID, project number, hackathon label, ACTIVE lifecycle, and enabled billing all match. Billing has not yet been verified enabled, so live Google and Cloud Run fields remain pending.
+
+A manual keyless GitHub Actions deployment workflow is committed at `.github/workflows/deploy-cloud-run.yml`. It can be used only after the owner bootstrap creates the bounded deployer service account and Workload Identity Federation provider.
 
 ## Draft private testing instructions
 
@@ -50,9 +69,9 @@ The one skipped test is the opt-in live Google integration test. A skipped live 
 2. Run the normal verified workflow.
 3. Inject the visibly labeled `stale_evidence` controlled fault.
 4. Confirm the final action changes to `BLOCKED` before recomputation.
-5. Inspect the exact blast radius and the reusable checkpoints.
+5. Inspect the exact blast radius and the reusable checkpoints. The judge proof strip must show `TRUST BREAK → BLAST RADIUS → ACTION BLOCKED → SAFE WORK REUSED` from the same runtime state.
 6. Trigger autonomous recovery; do not choose rerun agents manually.
-7. Confirm only affected agent checkpoints rerun, unaffected checkpoints remain reused, and the final action resumes only after deterministic re-verification.
+7. Confirm only affected agent checkpoints rerun, unaffected checkpoints remain reused, and the final action resumes only after deterministic re-verification. The proof strip must finish `BRANCH RECOMPUTED → VERIFIED RECOVERY`.
 8. Run the 100-agent synthetic scale probe from the repository to inspect the deterministic fleet-scale receipt; it is not a claim of 100 Gemini calls.
 
 ## Required deliverables
@@ -67,11 +86,17 @@ The one skipped test is the opt-in live Google integration test. A skipped live 
 - [x] 100 synthetic agent-checkpoint scale probe
 - [x] Reproducible local README instructions
 - [x] Public GitHub repository URL
-- [x] Remote GitHub CI / ADK construction / container build
+- [x] Remote GitHub CI / ADK construction / shell / JS / scale receipt / container build
+- [x] Canonical architecture source (`docs/ARCHITECTURE.md`)
+- [x] Fortified threat model (`docs/THREAT_MODEL.md`)
+- [x] Isolated hackathon GCP project created
+- [x] Keyless post-bootstrap deployment workflow prepared
+- [x] Flight Recorder six-step judge proof strip wired to runtime state
+- [ ] Billing enabled on isolated hackathon project
 - [ ] Live Gemini 3.5+ invocation via Google ADK
 - [ ] Google Cloud Cloud Run deployment
 - [ ] Hosted judge URL
-- [ ] Architecture diagram upload
+- [ ] Architecture diagram image/file upload
 - [ ] <=4 minute public YouTube/Vimeo demo with visible Google Cloud proof
 - [ ] Final Devpost submission
 

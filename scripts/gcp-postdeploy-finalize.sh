@@ -31,10 +31,9 @@ PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(project
 REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
 [ -n "$REVISION" ] || { echo "BLOCKER=no ready Cloud Run revision" >&2; exit 4; }
 
-# HTTP 404 from a Ready Cloud Run service without request logs is consistent with network-level
-# ingress/default-URL restrictions. Repair only service-level reachability; this does not rebuild
-# the container image. Public access applies to UI/health, while application mutation APIs still
-# require the Secret Manager-backed judge key.
+# Keep the judge UI publicly reachable while mutation APIs remain protected by the
+# Secret Manager-backed application judge key. Cloud Run reserves some URL paths,
+# including some paths ending in "z", so all live health checks use /health.
 gcloud run services update "$SERVICE" \
   --project "$PROJECT_ID" \
   --region "$RUN_REGION" \
@@ -57,7 +56,7 @@ printf 'POSTDEPLOY_REACHABILITY=ingress_all,default_url_enabled,invoker_iam_chec
 # Allow service-level routing metadata a short bounded propagation window before live smoke.
 HEALTH_OK=0
 for ATTEMPT in 1 2 3 4 5 6; do
-  STATUS="$(curl --silent --output /tmp/recovery-mesh-health.json --write-out '%{http_code}' "${SERVICE_URL}/healthz" || true)"
+  STATUS="$(curl --silent --output /tmp/recovery-mesh-health.json --write-out '%{http_code}' "${SERVICE_URL}/health" || true)"
   if [ "$STATUS" = "200" ]; then
     HEALTH_OK=1
     break
@@ -66,7 +65,7 @@ for ATTEMPT in 1 2 3 4 5 6; do
   sleep 5
 done
 [ "$HEALTH_OK" = "1" ] || {
-  echo "BLOCKER=Cloud Run health remained unreachable after service-level public access repair" >&2
+  echo "BLOCKER=Cloud Run /health remained unreachable after bounded readiness wait" >&2
   exit 6
 }
 

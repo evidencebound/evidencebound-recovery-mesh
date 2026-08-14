@@ -50,8 +50,8 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
-@app.get("/healthz")
-def healthz() -> dict[str, object]:
+@app.get("/health")
+def health() -> dict[str, object]:
     try:
         executor = executor_from_environment()
         execution = {

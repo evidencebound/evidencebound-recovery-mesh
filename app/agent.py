@@ -26,21 +26,22 @@ def _model(model_name: str) -> Gemini:
 
 def _generation_config(*, structured_worker_output: bool) -> types.GenerateContentConfig:
     """Keep judge-agent output compact, deterministic, and cost bounded per invocation."""
-    kwargs: dict[str, object] = {
-        "temperature": 0.0,
-        "max_output_tokens": 256,
-    }
     if structured_worker_output:
         # ADK 2.7.0 currently yields an empty final Event for this workload when
         # LlmAgent.output_schema is used directly. Keep the agent execution in ADK,
         # but use Gemini's native JSON-schema generation contract so the final event
         # carries normal model text. Recovery Mesh independently validates the same
         # WorkerOutput schema again after generation.
-        kwargs.update(
+        return types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=256,
             response_mime_type="application/json",
             response_json_schema=WorkerOutput.model_json_schema(),
         )
-    return types.GenerateContentConfig(**kwargs)
+    return types.GenerateContentConfig(
+        temperature=0.0,
+        max_output_tokens=256,
+    )
 
 
 def build_execution_agent(agent_id: str, *, model_name: str = MODEL) -> Agent:

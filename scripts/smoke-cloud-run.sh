@@ -9,7 +9,7 @@ protected_curl() {
     | curl --config - "$@"
 }
 
-HEALTH_JSON="$(curl --fail --silent --show-error "${URL}/healthz")"
+HEALTH_JSON="$(curl --fail --silent --show-error "${URL}/health")"
 printf '%s' "$HEALTH_JSON" | python -c '
 import json,sys
 x=json.load(sys.stdin)

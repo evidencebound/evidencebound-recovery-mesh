@@ -22,6 +22,14 @@ def _model(model_name: str) -> Gemini:
     )
 
 
+def _generation_config() -> types.GenerateContentConfig:
+    """Keep judge-agent output compact, deterministic, and cost bounded per invocation."""
+    return types.GenerateContentConfig(
+        temperature=0.0,
+        max_output_tokens=256,
+    )
+
+
 def build_execution_agent(agent_id: str, *, model_name: str = MODEL) -> Agent:
     """Build a fresh standalone ADK agent for one deterministic DAG checkpoint."""
     instructions = {
@@ -67,6 +75,7 @@ dependency, and side-effect checks.
         model=_model(model_name),
         description=descriptions[agent_id],
         instruction=instruction,
+        generate_content_config=_generation_config(),
     )
 
 
@@ -86,6 +95,7 @@ Coordinate the specialist research fleet. Delegate quantitative work to statisti
 work to scout, and adversarial review to skeptic. Never claim VERIFIED, safe-to-publish, or
 recovered state. Deterministic EvidenceBound contracts own those decisions.
 """.strip(),
+        generate_content_config=_generation_config(),
         sub_agents=[statistician, scout, skeptic],
     )
 

@@ -2,25 +2,35 @@
 set -euo pipefail
 
 : "${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT to the existing hackathon Google Cloud project ID}"
+EXPECTED_PROJECT_ID="${RECOVERY_MESH_EXPECTED_PROJECT_ID:-evidencebound-rm-c977c1}"
 LOCATION="${GOOGLE_CLOUD_LOCATION:-global}"
 MODEL="${RECOVERY_MESH_MODEL:-gemini-3.5-flash}"
 
 command -v gcloud >/dev/null || { echo "BLOCKER=gcloud CLI not installed" >&2; exit 2; }
 command -v curl >/dev/null || { echo "BLOCKER=curl not installed" >&2; exit 2; }
 
-ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
-[ -n "$ACCOUNT" ] || { echo "BLOCKER=no active gcloud account" >&2; exit 3; }
+[ "$GOOGLE_CLOUD_PROJECT" = "$EXPECTED_PROJECT_ID" ] || {
+  echo "BLOCKER=unexpected project id: got $GOOGLE_CLOUD_PROJECT expected $EXPECTED_PROJECT_ID" >&2
+  exit 3
+}
 
-STATE="$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(lifecycleState)')"
-[ "$STATE" = "ACTIVE" ] || { echo "BLOCKER=project is not ACTIVE: $STATE" >&2; exit 4; }
+ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
+[ -n "$ACCOUNT" ] || { echo "BLOCKER=no active gcloud account" >&2; exit 4; }
 
 gcloud config set project "$GOOGLE_CLOUD_PROJECT" >/dev/null
+[ "$(gcloud config get-value project 2>/dev/null)" = "$GOOGLE_CLOUD_PROJECT" ] || {
+  echo "BLOCKER=gcloud project target mismatch" >&2
+  exit 5
+}
 
+# Service Usage and the live Vertex call below are sufficient operational liveness checks.
+# Avoid gcloud projects describe here: it adds a Cloud Resource Manager API dependency that
+# is not required for the Cloud Run source-deploy path.
 ENABLED="$(gcloud services list --enabled --project "$GOOGLE_CLOUD_PROJECT" \
   --filter='config.name:aiplatform.googleapis.com' --format='value(config.name)')"
 [ "$ENABLED" = "aiplatform.googleapis.com" ] || {
   echo "BLOCKER=aiplatform.googleapis.com is not enabled; run first-time owner bootstrap" >&2
-  exit 5
+  exit 6
 }
 
 echo "GCP_ACCOUNT=$ACCOUNT"

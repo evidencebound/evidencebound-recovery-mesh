@@ -1,15 +1,52 @@
-const state = { run: null };
+const state = { run: null, accessRequired: false };
 const graphOrder = {
   fixture_snapshot: [1,1], history_snapshot: [1,2], policy_rules: [1,3],
   statistician: [2,1], scout: [2,3], skeptic: [3,2], orchestrator: [4,2], publish_action: [5,2]
 };
 const qs = (s) => document.querySelector(s);
 const qsa = (s) => [...document.querySelectorAll(s)];
+const judgeKey = () => sessionStorage.getItem('recoveryMeshJudgeKey') || '';
+
+function updateAccessUi(status) {
+  const gate = qs('#accessGate');
+  const pill = qs('#accessState');
+  if (!state.accessRequired) {
+    gate.hidden = true;
+    qs('#startRun').disabled = false;
+    return;
+  }
+  gate.hidden = false;
+  const hasKey = Boolean(judgeKey());
+  qs('#startRun').disabled = !hasKey;
+  pill.textContent = status || (hasKey ? 'KEY STORED' : 'LOCKED');
+  pill.className = 'pill ' + (hasKey && status !== 'REJECTED' ? 'ok' : 'neutral');
+}
 
 async function request(path, opts={}) {
-  const r = await fetch(path, {method: opts.method || 'GET', headers: {'Content-Type':'application/json'}});
-  if (!r.ok) throw new Error((await r.json()).detail || `${r.status}`);
+  const headers = {'Content-Type':'application/json'};
+  const key = judgeKey();
+  if (key) headers['X-Recovery-Mesh-Judge-Key'] = key;
+  const r = await fetch(path, {method: opts.method || 'GET', headers});
+  if (!r.ok) {
+    if (r.status === 401) updateAccessUi('REJECTED');
+    let detail = `${r.status}`;
+    try { detail = (await r.json()).detail || detail; } catch (_) { /* keep status */ }
+    throw new Error(detail);
+  }
   return r.json();
+}
+
+async function loadHealth() {
+  const r = await fetch('/healthz');
+  if (!r.ok) throw new Error(`health ${r.status}`);
+  const health = await r.json();
+  state.accessRequired = Boolean(health.judge_access_required);
+  const execution = health.execution || {};
+  const provider = execution.provider || 'unknown';
+  const model = execution.model ? ` · ${execution.model}` : '';
+  qs('#executionProvider').textContent = `${provider}${model}`.toUpperCase();
+  qs('#executionProvider').className = 'pill ' + (execution.live_google ? 'ok' : 'neutral');
+  updateAccessUi();
 }
 
 function counts(run) {
@@ -78,6 +115,7 @@ function render(run) {
   renderBenchmark(run.benchmark);
   qsa('[data-fault]').forEach(b => b.disabled = !!run.active_blast_radius);
   qs('#recover').disabled = !run.active_blast_radius;
+  updateAccessUi();
 
   const moment = qs('#judgeMoment');
   if (run.active_blast_radius) {
@@ -171,15 +209,40 @@ function renderBenchmark(b) {
   root.insertAdjacentHTML('beforeend', `<p class="benchmark-empty" style="grid-column:1/-1;margin:2px 0 0">${note}</p>`);
 }
 
+qs('#saveJudgeKey').addEventListener('click', () => {
+  const input = qs('#judgeKey');
+  const value = input.value.trim();
+  if (!value) {
+    sessionStorage.removeItem('recoveryMeshJudgeKey');
+    updateAccessUi('LOCKED');
+    return;
+  }
+  sessionStorage.setItem('recoveryMeshJudgeKey', value);
+  input.value = '';
+  updateAccessUi('KEY STORED');
+});
+qs('#judgeKey').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') qs('#saveJudgeKey').click();
+});
 qs('#startRun').addEventListener('click', async () => { try { render(await request('/api/runs',{method:'POST'})); } catch(e) { alert(e.message); } });
 qsa('[data-fault]').forEach(btn => btn.addEventListener('click', async () => { if(!state.run) return; try { render(await request(`/api/runs/${state.run.run_id}/fault/${btn.dataset.fault}`,{method:'POST'})); } catch(e) { alert(e.message); } }));
 qs('#recover').addEventListener('click', async () => { try { render(await request(`/api/runs/${state.run.run_id}/recover`,{method:'POST'})); } catch(e) { alert(e.message); } });
 window.addEventListener('resize', () => state.run && drawEdges(state.run));
 
-(async function optionalVisualSmokeHarness(){
+(async function initialize(){
+  try {
+    await loadHealth();
+  } catch (e) {
+    console.error('health check failed', e);
+  }
+
   const p = new URLSearchParams(location.search);
   const scenario = p.get('autorun');
   if (!scenario) return;
+  if (state.accessRequired && !judgeKey()) {
+    console.info('visual smoke harness waiting for judge access key');
+    return;
+  }
   try {
     let run = await request('/api/runs', {method:'POST'});
     run = await request(`/api/runs/${run.run_id}/fault/${scenario}`, {method:'POST'});

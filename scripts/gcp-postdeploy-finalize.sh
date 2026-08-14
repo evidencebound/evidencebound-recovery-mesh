@@ -30,12 +30,45 @@ PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(project
 
 REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
 [ -n "$REVISION" ] || { echo "BLOCKER=no ready Cloud Run revision" >&2; exit 4; }
-SERVICE_URL="https://${SERVICE}-${PROJECT_NUMBER}.${RUN_REGION}.run.app"
-STATUS_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"
+
+# HTTP 404 from a Ready Cloud Run service without request logs is consistent with network-level
+# ingress/default-URL restrictions. Repair only service-level reachability; this does not rebuild
+# the container image. Public access applies to UI/health, while application mutation APIs still
+# require the Secret Manager-backed judge key.
+gcloud run services update "$SERVICE" \
+  --project "$PROJECT_ID" \
+  --region "$RUN_REGION" \
+  --ingress all \
+  --default-url \
+  --no-invoker-iam-check \
+  --quiet >/dev/null
+
+SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.url)')"
+REVISION_AFTER="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
+[ "$REVISION_AFTER" = "$REVISION" ] || {
+  echo "BLOCKER=service-level reachability update unexpectedly changed ready revision: $REVISION -> $REVISION_AFTER" >&2
+  exit 5
+}
 
 printf 'POSTDEPLOY_SERVICE_URL=%s\n' "$SERVICE_URL"
-printf 'POSTDEPLOY_STATUS_URL=%s\n' "$STATUS_URL"
-printf 'POSTDEPLOY_REVISION=%s\n' "$REVISION"
+printf 'POSTDEPLOY_REVISION=%s\n' "$REVISION_AFTER"
+printf 'POSTDEPLOY_REACHABILITY=ingress_all,default_url_enabled,invoker_iam_check_disabled\n'
+
+# Allow service-level routing metadata a short bounded propagation window before live smoke.
+HEALTH_OK=0
+for ATTEMPT in 1 2 3 4 5 6; do
+  STATUS="$(curl --silent --output /tmp/recovery-mesh-health.json --write-out '%{http_code}' "${SERVICE_URL}/healthz" || true)"
+  if [ "$STATUS" = "200" ]; then
+    HEALTH_OK=1
+    break
+  fi
+  printf 'POSTDEPLOY_HEALTH_WAIT attempt=%s http_status=%s\n' "$ATTEMPT" "$STATUS"
+  sleep 5
+done
+[ "$HEALTH_OK" = "1" ] || {
+  echo "BLOCKER=Cloud Run health remained unreachable after service-level public access repair" >&2
+  exit 6
+}
 
 export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(
   gcloud secrets versions access "$JUDGE_SECRET_VERSION" \
@@ -44,7 +77,7 @@ export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(
 )"
 [ -n "$RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE" ] || {
   echo "BLOCKER=judge key unavailable" >&2
-  exit 5
+  exit 7
 }
 "$(dirname "$0")/smoke-cloud-run.sh" "$SERVICE_URL"
 unset RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE
@@ -111,7 +144,7 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER_SA" \
 PROVIDER_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
 printf 'GCP_POSTDEPLOY_FINALIZE=PASS\n'
 printf 'SERVICE_URL=%s\n' "$SERVICE_URL"
-printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
+printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION_AFTER"
 printf 'GITHUB_DEPLOYER_SERVICE_ACCOUNT=%s\n' "$DEPLOYER_SA"
 printf 'WORKLOAD_IDENTITY_PROVIDER=%s\n' "$PROVIDER_RESOURCE"
 printf 'JUDGE_SECRET_NAME=%s\n' "$JUDGE_SECRET_NAME"

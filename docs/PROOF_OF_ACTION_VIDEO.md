@@ -2,25 +2,35 @@
 
 This is a recording plan, not evidence. Replace every bracketed value only after the live Google Cloud acceptance run produces the receipt.
 
+## Pre-recording security setup — not shown in video
+
+- Open the live Flight Recorder.
+- Retrieve the private judge testing key locally from Secret Manager.
+- Enter it into the **Bounded Judge Access** box before recording begins.
+- Verify the UI says the key is stored/unlocked.
+- Never show the secret value, Secret Manager reveal dialog, terminal output containing the value, browser devtools request headers, or Devpost private testing field in the recording.
+- The public video may show only that judge access is protected, never the credential itself.
+
 ## 0:00-0:20 — Problem and product
 
 Show the live Cloud Run Flight Recorder and one sentence:
 
 > EvidenceBound Recovery Mesh is a trust-aware flight recorder and selective self-healing engine for autonomous agent fleets. A trust break freezes unsafe action, computes exact downstream impact, preserves still-verifiable work, reruns only affected agents, then re-verifies before resuming.
 
-Keep the Cloud Run URL visible.
+Keep the Cloud Run origin visible without exposing query-string credentials. The production UI does not use credentials in the URL.
 
 ## 0:20-0:45 — Working fleet
 
-Create a fresh production run. Show:
+Create a fresh protected production run. Show:
 
+- judge controls are unlocked without revealing the key;
 - execution provider: `google_adk_vertex`;
 - model: the actually deployed Gemini model;
 - four ADK roles: Statistician, Scout, Skeptic, Orchestrator;
 - all baseline checkpoints `VERIFIED`;
 - ADK invocation receipts in the live run.
 
-Do not call the deterministic test executor a Gemini run.
+Do not call the deterministic test executor a Gemini run. Do not show the private request header.
 
 ## 0:45-1:25 — Trust break and action block
 
@@ -48,7 +58,7 @@ Core visual moment:
 
 `SAFE WORK REUSED -> AFFECTED BRANCH RECOMPUTED -> VERIFIED RECOVERY`
 
-## 2:10-2:45 — Measured receipt
+## 2:10-2:43 — Measured receipt
 
 Show only values from that exact production run:
 
@@ -62,25 +72,29 @@ Show only values from that exact production run:
 
 If ADK does not expose token usage in the events, say that token telemetry was unavailable for this run; do not estimate it.
 
-## 2:45-3:15 — Fleet-scale proof
+## 2:43-3:10 — Fleet-scale proof
 
-Run/show the deterministic 100-agent-checkpoint scale probe separately. Label it clearly as synthetic deterministic graph scale, not 100 live Gemini calls.
+Show the deterministic 100-agent-checkpoint scale probe separately. Label it clearly as synthetic deterministic graph scale, not 100 live Gemini calls.
 
 Show the exact measured receipt from the current build and avoid extrapolating the result beyond that run.
 
-## 3:15-3:40 — Google Cloud proof
+## 3:10-3:42 — Google Cloud + security proof
 
 Show Google Cloud Console evidence for the exact deployed service:
 
+- isolated hackathon project ID;
 - Cloud Run service/revision;
-- project ID;
 - runtime service account;
 - live service URL;
-- Vertex/ADK execution receipt or Cloud Logging entries from the same run.
+- recent Cloud Run request/log evidence from the same run;
+- Secret Manager secret **name/version only** (`recovery-mesh-judge-key:1`), never reveal its value;
+- production smoke receipt `JUDGE_API_AUTH=PASS unauthenticated_post=401` if visible in a sanitized terminal/log capture.
+
+The security point is concise: public judge discovery remains easy, but run creation/read/fault/recovery operations reject unauthenticated traffic before model execution.
 
 Do not claim Gemini Enterprise Agent Platform features unless separately invoked and verified.
 
-## 3:40-3:58 — Close
+## 3:42-3:58 — Close
 
 Show the recovered trust graph and final action state. Close with:
 

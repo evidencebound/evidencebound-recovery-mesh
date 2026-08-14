@@ -50,6 +50,19 @@
       </article>
     </section>
 
+    <section id="accessGate" class="access-gate panel" hidden>
+      <div>
+        <span class="eyebrow">BOUNDED JUDGE ACCESS</span>
+        <strong>Action APIs are protected</strong>
+        <p>Enter the private testing key supplied with the Devpost judge instructions. The key stays in this browser tab and is sent only as a request header.</p>
+      </div>
+      <div class="access-controls">
+        <input id="judgeKey" type="password" autocomplete="off" placeholder="Judge access key" aria-label="Judge access key" />
+        <button id="saveJudgeKey" type="button">Unlock controls</button>
+        <span id="accessState" class="pill neutral">LOCKED</span>
+      </div>
+    </section>
+
     <section class="controls panel">
       <div class="control-group">
         <button id="startRun" class="primary">1 · Start verified fleet</button>

@@ -6,6 +6,8 @@ dependency invalidation, action gates, and recovery decisions outside the model.
 from __future__ import annotations
 
 import os
+from copy import deepcopy
+from typing import Any
 
 from google.adk.agents import Agent
 from google.adk.apps import App
@@ -13,6 +15,7 @@ from google.adk.models import Gemini
 from google.genai import types
 
 from recovery_mesh.verification import WorkerOutput
+from recovery_mesh.workload import AGENT_DEPENDENCIES
 
 MODEL = os.getenv("RECOVERY_MESH_MODEL", "gemini-3.5-flash")
 
@@ -24,24 +27,33 @@ def _model(model_name: str) -> Gemini:
     )
 
 
-def _generation_config(*, structured_worker_output: bool) -> types.GenerateContentConfig:
-    """Keep judge-agent output compact, deterministic, and cost bounded per invocation."""
-    if structured_worker_output:
-        # ADK 2.7.0 currently yields an empty final Event for this workload when
-        # LlmAgent.output_schema is used directly. Keep the agent execution in ADK,
-        # but use Gemini's native JSON-schema generation contract so the final event
-        # carries normal model text. Recovery Mesh independently validates the same
-        # WorkerOutput schema again after generation.
+def _worker_output_schema(agent_id: str) -> dict[str, Any]:
+    """Constrain citations to the deterministic dependency graph for one checkpoint."""
+    try:
+        allowed = AGENT_DEPENDENCIES[agent_id]
+    except KeyError as exc:
+        raise ValueError(f"unsupported execution agent: {agent_id}") from exc
+    schema = deepcopy(WorkerOutput.model_json_schema())
+    evidence_ids = schema["properties"]["evidence_ids"]
+    evidence_ids["items"] = {"type": "string", "enum": list(allowed)}
+    evidence_ids["minItems"] = 1
+    evidence_ids["uniqueItems"] = True
+    return schema
+
+
+def _generation_config(*, agent_id: str | None = None) -> types.GenerateContentConfig:
+    """Keep judge-agent output compact, schema-bound, and cost bounded per invocation."""
+    if agent_id is not None:
+        # Gemini 3.5 Flash thinks by default. Minimal thinking preserves enough visible-output
+        # budget for the compact JSON response while deterministic Recovery Mesh owns all trust
+        # decisions after generation.
         return types.GenerateContentConfig(
-            temperature=0.0,
             max_output_tokens=256,
+            thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             response_mime_type="application/json",
-            response_json_schema=WorkerOutput.model_json_schema(),
+            response_json_schema=_worker_output_schema(agent_id),
         )
-    return types.GenerateContentConfig(
-        temperature=0.0,
-        max_output_tokens=256,
-    )
+    return types.GenerateContentConfig(max_output_tokens=256)
 
 
 def build_execution_agent(agent_id: str, *, model_name: str = MODEL) -> Agent:
@@ -49,25 +61,30 @@ def build_execution_agent(agent_id: str, *, model_name: str = MODEL) -> Agent:
     instructions = {
         "statistician": """
 You are the Statistician in a bounded research fleet. Analyze only the evidence supplied in
-this run. Return only the configured structured worker response. Cite only identifiers present
-in the prompt, make uncertainty explicit, and never invent missing observations. Your output
-is advisory and cannot authorize an action or change Recovery Mesh trust state.
+this run. Return only the configured structured worker response. For evidence_ids, cite only
+the dependency checkpoint IDs explicitly listed by the runtime, never nested source IDs or
+field values. Make uncertainty explicit and never invent missing observations. Your output is
+advisory and cannot authorize an action or change Recovery Mesh trust state.
 """.strip(),
         "scout": """
 You are the Scout. Extract relevant context only from the supplied controlled fixture and
-explicit inputs. Return only the configured structured worker response. Distinguish observed
-from missing data and never fill missing fields with guesses. Your output is advisory and
-cannot authorize an action or change Recovery Mesh trust state.
+explicit inputs. Return only the configured structured worker response. For evidence_ids, cite
+only the dependency checkpoint IDs explicitly listed by the runtime, never nested source IDs
+or field values. Distinguish observed from missing data and never fill missing fields with
+guesses. Your output is advisory and cannot authorize an action or change Recovery Mesh trust
+state.
 """.strip(),
         "skeptic": """
 You are the Skeptic. Inspect the supplied peer outputs and evidence references. Return only
-the configured structured worker response. Identify unsupported, contradictory, stale, or
-overconfident claims. Prefer uncertainty over invented support. You cannot override
+the configured structured worker response. For evidence_ids, cite only the dependency
+checkpoint IDs explicitly listed by the runtime. Identify unsupported, contradictory, stale,
+or overconfident claims. Prefer uncertainty over invented support. You cannot override
 deterministic verification.
 """.strip(),
         "orchestrator": """
 You are the Orchestrator. Synthesize only the supplied specialist outputs and policy. Return
-only the configured structured worker response. Never claim that an output is VERIFIED, safe
+only the configured structured worker response. For evidence_ids, cite only the dependency
+checkpoint IDs explicitly listed by the runtime. Never claim that an output is VERIFIED, safe
 to publish, or recovered: those states are owned exclusively by the deterministic EvidenceBound
 Recovery Mesh runtime after digest, provenance, policy, dependency, and side-effect checks.
 """.strip(),
@@ -87,7 +104,7 @@ Recovery Mesh runtime after digest, provenance, policy, dependency, and side-eff
         model=_model(model_name),
         description=descriptions[agent_id],
         instruction=instruction,
-        generate_content_config=_generation_config(structured_worker_output=True),
+        generate_content_config=_generation_config(agent_id=agent_id),
     )
 
 
@@ -107,7 +124,7 @@ Coordinate the specialist research fleet. Delegate quantitative work to statisti
 work to scout, and adversarial review to skeptic. Never claim VERIFIED, safe-to-publish, or
 recovered state. Deterministic EvidenceBound contracts own those decisions.
 """.strip(),
-        generate_content_config=_generation_config(structured_worker_output=False),
+        generate_content_config=_generation_config(),
         sub_agents=[statistician, scout, skeptic],
     )
 

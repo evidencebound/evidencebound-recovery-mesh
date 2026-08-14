@@ -67,9 +67,15 @@ gcloud run deploy "$SERVICE" \
   --labels "app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026" \
   --quiet
 
-URL="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.url)')"
+# Cloud Run currently exposes both deterministic and legacy/non-deterministic run.app hostnames.
+# Use the documented deterministic hostname for judge/smoke receipts so we do not depend on a
+# legacy status.url alias that can be stale during hostname rollout/propagation.
+PROJECT_NUMBER="$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')"
+URL="https://${SERVICE}-${PROJECT_NUMBER}.${RUN_REGION}.run.app"
+DESCRIBED_URL="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.url)')"
 REVISION="$(gcloud run services describe "$SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$RUN_REGION" --format='value(status.latestReadyRevisionName)')"
 printf 'SERVICE_URL=%s\n' "$URL"
+printf 'SERVICE_STATUS_URL=%s\n' "$DESCRIBED_URL"
 printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 printf 'BUILD_SERVICE_ACCOUNT=%s\n' "$BUILD_SA"

@@ -29,8 +29,10 @@ echo "VERTEX_LOCATION=$LOCATION"
 echo "MODEL=$MODEL"
 
 # Smallest live model check before a deployment/revision. No fallback is permitted.
+# Gemini 3.5 Flash thinks by default. Keep this trivial probe at minimal thinking and leave
+# enough output budget for the visible answer so reasoning tokens cannot consume the entire cap.
 ACCESS_TOKEN="$(gcloud auth print-access-token)"
-REQUEST='{"contents":[{"role":"user","parts":[{"text":"Return exactly the word READY."}]}],"generationConfig":{"temperature":0,"maxOutputTokens":8}}'
+REQUEST='{"contents":[{"role":"user","parts":[{"text":"Return exactly the word READY."}]}],"generationConfig":{"maxOutputTokens":32,"thinkingConfig":{"thinkingLevel":"minimal"}}}'
 RESPONSE="$(curl --fail-with-body --silent --show-error \
   -X POST \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
@@ -46,8 +48,8 @@ text="".join(
     for c in x.get("candidates", [])
     for p in c.get("content", {}).get("parts", [])
 ).strip()
-assert text, x
-print("VERTEX_GEMINI_LIVE=PASS response_received=true")
+assert text == "READY", {"text": text, "response": x}
+print("VERTEX_GEMINI_LIVE=PASS response=READY")
 usage=x.get("usageMetadata", {})
 if usage:
     print("VERTEX_USAGE=" + json.dumps(usage, sort_keys=True, separators=(",",":")))

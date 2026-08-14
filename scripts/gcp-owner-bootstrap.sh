@@ -14,6 +14,9 @@ DEPLOYER_SA_NAME="${RECOVERY_MESH_DEPLOYER_SA:-recovery-mesh-deployer}"
 POOL_ID="${RECOVERY_MESH_WIF_POOL:-github-actions}"
 PROVIDER_ID="${RECOVERY_MESH_WIF_PROVIDER:-recovery-mesh}"
 IAM_WAIT_SECONDS="${RECOVERY_MESH_IAM_PROPAGATION_WAIT_SECONDS:-30}"
+EXPECTED_PROJECT_ID="${RECOVERY_MESH_EXPECTED_PROJECT_ID:-evidencebound-rm-c977c1}"
+EXPECTED_PROJECT_NUMBER="${RECOVERY_MESH_EXPECTED_PROJECT_NUMBER:-457699623691}"
+EXPECTED_HACKATHON_LABEL="${RECOVERY_MESH_EXPECTED_HACKATHON_LABEL:-all-things-agentic-2026}"
 
 command -v gcloud >/dev/null || { echo "BLOCKER=gcloud CLI not installed" >&2; exit 2; }
 
@@ -23,11 +26,38 @@ ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | h
 : "${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT to the explicit hackathon Google Cloud project ID}"
 PROJECT_ID="$GOOGLE_CLOUD_PROJECT"
 
+# Fail closed before any API/IAM mutation if Cloud Shell is pointed at an unexpected project.
+[ "$PROJECT_ID" = "$EXPECTED_PROJECT_ID" ] || {
+  echo "BLOCKER=unexpected project id: got $PROJECT_ID expected $EXPECTED_PROJECT_ID" >&2
+  exit 4
+}
+
 PROJECT_STATE="$(gcloud projects describe "$PROJECT_ID" --format='value(lifecycleState)')"
 [ "$PROJECT_STATE" = "ACTIVE" ] || { echo "BLOCKER=project is not ACTIVE: $PROJECT_STATE" >&2; exit 5; }
 
-gcloud config set project "$PROJECT_ID" >/dev/null
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+[ "$PROJECT_NUMBER" = "$EXPECTED_PROJECT_NUMBER" ] || {
+  echo "BLOCKER=unexpected project number: got $PROJECT_NUMBER expected $EXPECTED_PROJECT_NUMBER" >&2
+  exit 6
+}
+
+PROJECT_HACKATHON_LABEL="$(gcloud projects describe "$PROJECT_ID" --format='value(labels.hackathon)')"
+[ "$PROJECT_HACKATHON_LABEL" = "$EXPECTED_HACKATHON_LABEL" ] || {
+  echo "BLOCKER=unexpected/missing hackathon label: got ${PROJECT_HACKATHON_LABEL:-<empty>} expected $EXPECTED_HACKATHON_LABEL" >&2
+  exit 7
+}
+
+# Billing is a hard production prerequisite. Check it before enabling APIs or creating IAM.
+BILLING_ENABLED="$(
+  gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null \
+    | tr '[:upper:]' '[:lower:]'
+)"
+[ "$BILLING_ENABLED" = "true" ] || {
+  echo "BLOCKER=billing is not enabled for $PROJECT_ID" >&2
+  exit 8
+}
+
+gcloud config set project "$PROJECT_ID" >/dev/null
 RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 BUILD_SA="${BUILD_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 DEPLOYER_SA="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -35,6 +65,8 @@ DEPLOYER_SA="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 printf 'OWNER_ACCOUNT=%s\n' "$ACCOUNT"
 printf 'GCP_PROJECT=%s\n' "$PROJECT_ID"
 printf 'PROJECT_NUMBER=%s\n' "$PROJECT_NUMBER"
+printf 'PROJECT_HACKATHON_LABEL=%s\n' "$PROJECT_HACKATHON_LABEL"
+printf 'BILLING_ENABLED=true\n'
 printf 'RUN_REGION=%s\n' "$RUN_REGION"
 printf 'VERTEX_LOCATION=%s\n' "$VERTEX_LOCATION"
 printf 'MODEL=%s\n' "$MODEL"

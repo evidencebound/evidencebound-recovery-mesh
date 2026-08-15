@@ -61,14 +61,14 @@ flowchart LR
   AG -- resume only after VERIFIED dependencies --> UI
 
   subgraph EXT[Enterprise persistence extension · NOT ACTIVE IN LIVE DEMO]
-    PA[Storage Adapter Boundary]
-    FS[Firestore\nmulti-week operational state]
-    BQ[BigQuery\nlong-term audit analytics]
-    PA -. future adapter .-> FS
-    PA -. future audit sink .-> BQ
+    PA[Durable Persistence Adapter]
+    FS[Firestore\ncross-session operational state]
+    BQ[BigQuery / Cloud Logging\nlong-retention audit analytics]
+    PA -. separately verified adapter .-> FS
+    PA -. separately verified audit route .-> BQ
   end
 
-  FR -. enterprise extension point .-> PA
+  FR -. structured persistence boundary .-> PA
 
   GH[GitHub Actions · main] -. OIDC .-> WIF[Workload Identity Federation]
   WIF -. impersonates bounded deployer .-> CR
@@ -77,18 +77,20 @@ flowchart LR
 
 The Cloud Run URL remains publicly reachable for judge usability while state-changing/run APIs require the private testing key supplied through Devpost's judge-only instructions. The key is generated during first bootstrap, stored in Secret Manager, and never committed or embedded in the UI. The browser keeps an entered key only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
 
-## Intentional production freeze and enterprise persistence boundary
+## Verified persistence boundary
 
-The current hackathon deployment intentionally keeps run state in a **process-local in-memory hot store**. This was a deliberate final-submission decision after the Google Cloud production path reached verified acceptance. Adding a new database dependency immediately before judging would introduce fresh IAM, availability, timeout and latency failure modes into a path that is already proven to execute the required trust-break and recovery journey.
+The deployed hackathon slice keeps run state in a **process-local in-memory hot store**. That is the current verified runtime boundary and is **not evidence of durable multi-week context**.
 
-The Flight Recorder emits structured checkpoint/event state that is independent of a specific durable database. The architecture therefore reserves an explicit **storage-adapter extension point** after that stream. In an enterprise deployment, a durable implementation can persist the same schema asynchronously to services such as:
+The Flight Recorder emits structured `FlightEvent` records, while the Trust Graph exposes checkpoint objects carrying stable run/checkpoint IDs, dependency metadata, output/evidence digests, policy version, provenance/integrity metadata and timestamps. That existing schema creates a clear persistence boundary without making the persistence provider part of trust authority.
 
-- **Firestore** for multi-week operational state and cross-session retention;
-- **BigQuery** for long-term compliance/audit analytics and data-sovereignty reporting workflows.
+A separately verified enterprise adapter can persist the same structured records to:
 
-These are **enterprise extension targets, not active services in this live submission**. Recovery Mesh does not claim that the current Cloud Run revision writes to Firestore or BigQuery, and no fictitious persistence receipt is presented.
+- **Firestore** for durable cross-session operational state;
+- **BigQuery / Cloud Logging** for long-retention audit analysis and reporting.
 
-The design principle is that persistence availability must not become trust authority. A durable store may retain more history, but deterministic verification, provenance/integrity checks, dependency invalidation, blast-radius calculation and the fail-closed action gate remain authoritative regardless of the storage provider.
+Those services are **enterprise extension targets, not active services in this live submission**. Recovery Mesh does not claim that the current Cloud Run revision writes to Firestore or BigQuery, and the architecture diagram must not imply that a future persistence box satisfies the Fortified multi-week-context requirement today.
+
+The design principle is that persistence availability must not become trust authority. A durable store can improve retention and restart survivability, but deterministic verification, provenance/integrity checks, dependency invalidation, blast-radius calculation and the fail-closed action gate remain authoritative regardless of the storage provider.
 
 ## Trust authority boundary
 
@@ -220,7 +222,7 @@ Keep these visually separate in the final diagram/demo:
 1. **Live production path:** Cloud Run + Google ADK + Gemini/Vertex + Secret Manager, backed by actual acceptance receipts.
 2. **Deterministic recovery authority:** Trust Graph, verification, blast radius, action gate.
 3. **Current hot state:** process-local in-memory store used by the live bounded demo.
-4. **Enterprise persistence extension:** Firestore / BigQuery adapter targets, explicitly not active in the live submission.
+4. **Enterprise persistence extension:** Firestore / BigQuery / Cloud Logging adapter targets, explicitly not active in the live submission.
 5. **Synthetic fleet-scale probe:** 100 synthetic agent checkpoints; proves deterministic graph scaling and does not claim 100 Gemini calls.
 
 The final architecture PNG uploaded to Devpost must match this truth boundary and must not include unverified Gemini Enterprise Agent Platform add-ons as active services.

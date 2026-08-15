@@ -9,6 +9,7 @@ Cloud Run revision: evidencebound-recovery-mesh-00005-82k
 Provider: google_adk_vertex
 Model: gemini-3.5-flash
 Latest deployment smoke: run-439f7d87c2a3
+Agent Registry workflow: 31871557186 — PASS
 ```
 
 Reference acceptance benchmark requested for the submission narrative:
@@ -83,7 +84,7 @@ Core visual moment:
 SAFE WORK REUSED -> AFFECTED BRANCH RECOMPUTED -> VERIFIED RECOVERY
 ```
 
-## 2:10-2:45 — Measured production receipt
+## 2:10-2:43 — Measured production receipt
 
 Keep the fresh run's benchmark panel visible. Read the **numbers actually shown on screen**.
 
@@ -93,7 +94,7 @@ Then spend a few seconds on the README reference receipt and say:
 
 This satisfies the requested `1781 vs 1358` proof without misattributing it to the fresh recording run.
 
-## 2:45-3:08 — Fleet-scale proof
+## 2:43-3:03 — Fleet-scale proof
 
 Show the deterministic 100-agent-checkpoint scale probe separately and label it clearly as **synthetic deterministic graph scale**, not 100 live Gemini calls.
 
@@ -106,7 +107,7 @@ Current locked scale receipt:
 1 blocked action
 ```
 
-## 3:08-3:40 — Google Cloud + security proof
+## 3:03-3:42 — Google Cloud + enterprise catalog + security proof
 
 Show Google Cloud Console evidence for the exact deployment:
 
@@ -116,12 +117,25 @@ Show Google Cloud Console evidence for the exact deployment:
 - runtime service account;
 - live `.run.app` URL;
 - recent request/log evidence;
+- Google Agent Registry entry `recovery-mesh-fleet` and the generated discoverable Agent;
 - Secret Manager secret **name/version only**: `recovery-mesh-judge-key:1`;
 - sanitized receipt: `JUDGE_API_AUTH=PASS unauthenticated_post=401`.
 
-Do not reveal the secret value. Do not claim Gemini Enterprise Agent Platform services unless separately invoked and verified.
+Narrate the Registry proof in one sentence:
 
-## 3:40-3:58 — Close
+> The same live Cloud Run fleet endpoint is cataloged in Google Agent Registry; registration and read-only Agent discovery passed through a separate keyless control-plane workflow without changing the production runtime.
+
+Optional if the screen can show the GitHub Actions summary clearly for 2–3 seconds:
+
+```text
+AGENT_REGISTRY=PASS
+AGENT_REGISTRY_DISCOVERY=PASS
+workflow 31871557186
+```
+
+Do not reveal the judge secret value. Do not claim that each internal ADK role is separately registered. Do not claim durable multi-week memory, Agent Runtime, Memory Bank, Model Armor, Firestore, or BigQuery as live integrations.
+
+## 3:42-3:58 — Close
 
 Show the recovered trust graph and final action state. Close with:
 

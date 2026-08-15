@@ -36,13 +36,28 @@ SERVICE_URL="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
   --format='value(status.url)')"
 [ -n "$SERVICE_URL" ] || { echo "BLOCKER=Cloud Run service URL is empty" >&2; exit 6; }
 
+# Agent Registry reached the stable gcloud surface in current Google documentation, but some
+# Cloud SDK runner builds can lag that surface. Prefer stable; use Google's documented alpha
+# variant only when the stable group is absent from the installed SDK.
+if gcloud agent-registry --help >/dev/null 2>&1; then
+  AGENT_REGISTRY_GCLOUD=(gcloud agent-registry)
+  AGENT_REGISTRY_CLI_CHANNEL=stable
+elif gcloud alpha agent-registry --help >/dev/null 2>&1; then
+  AGENT_REGISTRY_GCLOUD=(gcloud alpha agent-registry)
+  AGENT_REGISTRY_CLI_CHANNEL=alpha
+else
+  echo "BLOCKER=installed Cloud SDK exposes neither gcloud agent-registry nor gcloud alpha agent-registry" >&2
+  exit 9
+fi
+printf 'AGENT_REGISTRY_CLI_CHANNEL=%s\n' "$AGENT_REGISTRY_CLI_CHANNEL"
+
 DESCRIPTION="Trust-aware multi-agent recovery controller. Catalogs the EvidenceBound Recovery Mesh fleet entry point; internal Statistician, Scout, Skeptic, and Orchestrator roles remain governed by the deterministic Trust Graph and fail-closed action gate."
 INTERFACE="url=${SERVICE_URL},protocolBinding=http-json"
 
-if gcloud agent-registry services describe "$REGISTRY_SERVICE_ID" \
+if "${AGENT_REGISTRY_GCLOUD[@]}" services describe "$REGISTRY_SERVICE_ID" \
   --project "$GOOGLE_CLOUD_PROJECT" \
   --location "$REGISTRY_LOCATION" >/dev/null 2>&1; then
-  gcloud agent-registry services update "$REGISTRY_SERVICE_ID" \
+  "${AGENT_REGISTRY_GCLOUD[@]}" services update "$REGISTRY_SERVICE_ID" \
     --project "$GOOGLE_CLOUD_PROJECT" \
     --location "$REGISTRY_LOCATION" \
     --display-name "$DISPLAY_NAME" \
@@ -52,7 +67,7 @@ if gcloud agent-registry services describe "$REGISTRY_SERVICE_ID" \
     --quiet >/dev/null
   REGISTRY_OPERATION=updated
 else
-  gcloud agent-registry services create "$REGISTRY_SERVICE_ID" \
+  "${AGENT_REGISTRY_GCLOUD[@]}" services create "$REGISTRY_SERVICE_ID" \
     --project "$GOOGLE_CLOUD_PROJECT" \
     --location "$REGISTRY_LOCATION" \
     --display-name "$DISPLAY_NAME" \
@@ -63,7 +78,7 @@ else
   REGISTRY_OPERATION=created
 fi
 
-SERVICE_RESOURCE="$(gcloud agent-registry services describe "$REGISTRY_SERVICE_ID" \
+SERVICE_RESOURCE="$("${AGENT_REGISTRY_GCLOUD[@]}" services describe "$REGISTRY_SERVICE_ID" \
   --project "$GOOGLE_CLOUD_PROJECT" \
   --location "$REGISTRY_LOCATION" \
   --format='value(name)')"
@@ -73,7 +88,7 @@ SERVICE_RESOURCE="$(gcloud agent-registry services describe "$REGISTRY_SERVICE_I
 # propagation window and fail rather than claiming discoverability from the write alone.
 AGENT_RESOURCE=""
 for _ in $(seq 1 12); do
-  AGENT_RESOURCE="$(gcloud agent-registry agents list \
+  AGENT_RESOURCE="$("${AGENT_REGISTRY_GCLOUD[@]}" agents list \
     --project "$GOOGLE_CLOUD_PROJECT" \
     --location "$REGISTRY_LOCATION" \
     --filter="displayName=\"${DISPLAY_NAME}\"" \

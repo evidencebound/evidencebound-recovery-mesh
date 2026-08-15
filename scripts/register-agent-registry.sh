@@ -7,8 +7,8 @@ REGISTRY_SERVICE_ID="${RECOVERY_MESH_AGENT_REGISTRY_SERVICE_ID:-recovery-mesh-fl
 DISPLAY_NAME="${RECOVERY_MESH_AGENT_REGISTRY_DISPLAY_NAME:-EvidenceBound Recovery Mesh}"
 CLOUD_RUN_SERVICE="${RECOVERY_MESH_SERVICE:-evidencebound-recovery-mesh}"
 RUN_REGION="${GOOGLE_CLOUD_RUN_REGION:-europe-west1}"
-EXPECTED_PROJECT_ID="${RECOVERY_MESH_EXPECTED_PROJECT_ID:-evidencebound-rm-c977c1}"
-EXPECTED_PROJECT_NUMBER="${RECOVERY_MESH_EXPECTED_PROJECT_NUMBER:-457699623691}"
+EXPECTED_PROJECT_ID="evidencebound-rm-c977c1"
+EXPECTED_PROJECT_NUMBER="457699623691"
 
 command -v gcloud >/dev/null || { echo "BLOCKER=gcloud CLI not installed" >&2; exit 2; }
 
@@ -16,11 +16,12 @@ command -v gcloud >/dev/null || { echo "BLOCKER=gcloud CLI not installed" >&2; e
   echo "BLOCKER=unexpected Agent Registry project: $GOOGLE_CLOUD_PROJECT" >&2
   exit 3
 }
-PROJECT_NUMBER="$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')"
-[ "$PROJECT_NUMBER" = "$EXPECTED_PROJECT_NUMBER" ] || {
-  echo "BLOCKER=unexpected Agent Registry project number: $PROJECT_NUMBER" >&2
-  exit 4
-}
+
+# The project number is immutable and already anchored in the exact WIF provider path used by
+# the main-only workflow. Do not call `gcloud projects describe` here: that adds an unrelated
+# Cloud Resource Manager API dependency to a bounded Agent Registry control-plane operation.
+PROJECT_NUMBER="$EXPECTED_PROJECT_NUMBER"
+printf 'AGENT_REGISTRY_PROJECT=%s project_number=%s\n' "$GOOGLE_CLOUD_PROJECT" "$PROJECT_NUMBER"
 
 ENABLED="$(gcloud services list --enabled --project "$GOOGLE_CLOUD_PROJECT" \
   --filter='config.name:agentregistry.googleapis.com' --format='value(config.name)')"

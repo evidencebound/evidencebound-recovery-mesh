@@ -1,12 +1,12 @@
 # EvidenceBound Recovery Mesh — architecture source
 
-This document is the canonical source for the final Devpost architecture diagram. It describes the implemented design and the isolated Google Cloud deployment target. Cloud Run / Vertex AI boxes must not be labeled `LIVE` in the final image until production acceptance receipts exist.
+This document is the canonical source for the final Devpost architecture diagram. The current Google Cloud deployment has verified production receipts, so `LIVE / VERIFIED` labels refer only to the deployed Cloud Run + Google ADK + Vertex AI path demonstrated by acceptance. Enterprise persistence boxes are explicitly architectural extension points and are not presented as active integrations.
 
 ## Runtime architecture
 
 ```mermaid
 flowchart LR
-  J[Judge / operator] --> UI[Public Flight Recorder UI + health]
+  J[Judge / operator] --> UI[Public Flight Recorder UI + /health]
   J -->|private judge key header| AUTH[Judge API Gate]
   SM[Secret Manager\nrecovery-mesh-judge-key] -. secret env at instance start .-> AUTH
   UI --> AUTH
@@ -21,7 +21,8 @@ flowchart LR
     BR[Exact Blast-Radius Planner]
     AG[Fail-Closed Action Gate + Idempotency Ledger]
     LB[Process-local Live Model-Call Guard]
-    FR[Flight Recorder Event Stream]
+    FR[Flight Recorder Event / Checkpoint Stream]
+    HS[Process-local In-Memory Hot Store]
 
     C --> TG
     TG --> V
@@ -30,6 +31,7 @@ flowchart LR
     TG --> FR
     BR --> FR
     AG --> FR
+    FR --> HS
   end
 
   subgraph ADK[Google ADK Agent Fleet]
@@ -58,12 +60,35 @@ flowchart LR
   BR -- selective recompute only --> C
   AG -- resume only after VERIFIED dependencies --> UI
 
+  subgraph EXT[Enterprise persistence extension · NOT ACTIVE IN LIVE DEMO]
+    PA[Storage Adapter Boundary]
+    FS[Firestore\nmulti-week operational state]
+    BQ[BigQuery\nlong-term audit analytics]
+    PA -. future adapter .-> FS
+    PA -. future audit sink .-> BQ
+  end
+
+  FR -. enterprise extension point .-> PA
+
   GH[GitHub Actions · main] -. OIDC .-> WIF[Workload Identity Federation]
   WIF -. impersonates bounded deployer .-> CR
   WIF -. protected smoke only .-> SM
 ```
 
-The Cloud Run URL can remain publicly reachable for judge usability while state-changing/run APIs require the private testing key supplied through Devpost's judge-only instructions. The key is generated during first bootstrap, stored in Secret Manager, and never committed or embedded in the UI. The browser keeps an entered key only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
+The Cloud Run URL remains publicly reachable for judge usability while state-changing/run APIs require the private testing key supplied through Devpost's judge-only instructions. The key is generated during first bootstrap, stored in Secret Manager, and never committed or embedded in the UI. The browser keeps an entered key only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
+
+## Intentional production freeze and enterprise persistence boundary
+
+The current hackathon deployment intentionally keeps run state in a **process-local in-memory hot store**. This was a deliberate final-submission decision after the Google Cloud production path reached verified acceptance. Adding a new database dependency immediately before judging would introduce fresh IAM, availability, timeout and latency failure modes into a path that is already proven to execute the required trust-break and recovery journey.
+
+The Flight Recorder emits structured checkpoint/event state that is independent of a specific durable database. The architecture therefore reserves an explicit **storage-adapter extension point** after that stream. In an enterprise deployment, a durable implementation can persist the same schema asynchronously to services such as:
+
+- **Firestore** for multi-week operational state and cross-session retention;
+- **BigQuery** for long-term compliance/audit analytics and data-sovereignty reporting workflows.
+
+These are **enterprise extension targets, not active services in this live submission**. Recovery Mesh does not claim that the current Cloud Run revision writes to Firestore or BigQuery, and no fictitious persistence receipt is presented.
+
+The design principle is that persistence availability must not become trust authority. A durable store may retain more history, but deterministic verification, provenance/integrity checks, dependency invalidation, blast-radius calculation and the fail-closed action gate remain authoritative regardless of the storage provider.
 
 ## Trust authority boundary
 
@@ -162,7 +187,7 @@ The same runtime contracts handle controlled fault injection and normal verifica
 
 ## Public judge boundary
 
-Unauthenticated requests may load the Flight Recorder and `/healthz`. Run snapshots and all POST operations (`start`, `fault`, `recover`) pass through the judge API gate. Live mode without a configured judge secret returns `503`; a missing/incorrect supplied key returns `401` before an agent/model call.
+Unauthenticated requests may load the Flight Recorder and `/health`. Run snapshots and all POST operations (`start`, `fault`, `recover`) pass through the judge API gate. Live mode without a configured judge secret returns `503`; a missing/incorrect supplied key returns `401` before an agent/model call.
 
 A second guard bounds live provider reservations per Cloud Run process (`64` by deployment default). That guard reduces stray-call exposure but is explicitly **not** a billing/spend cap because a new process/revision resets it.
 
@@ -176,6 +201,7 @@ Project number: 457699623691
 Cloud Run region: europe-west1
 Vertex location: global
 Model target: gemini-3.5-flash
+Current verified revision: evidencebound-recovery-mesh-00005-82k
 Judge secret: recovery-mesh-judge-key:1
 ```
 
@@ -191,8 +217,10 @@ The bootstrap checks exact project identity, project number, hackathon label, li
 
 Keep these visually separate in the final diagram/demo:
 
-1. **Live production path:** Cloud Run + Google ADK + Gemini/Vertex, only after receipts exist.
+1. **Live production path:** Cloud Run + Google ADK + Gemini/Vertex + Secret Manager, backed by actual acceptance receipts.
 2. **Deterministic recovery authority:** Trust Graph, verification, blast radius, action gate.
-3. **Synthetic fleet-scale probe:** 100 synthetic agent checkpoints; proves deterministic graph scaling and does not claim 100 Gemini calls.
+3. **Current hot state:** process-local in-memory store used by the live bounded demo.
+4. **Enterprise persistence extension:** Firestore / BigQuery adapter targets, explicitly not active in the live submission.
+5. **Synthetic fleet-scale probe:** 100 synthetic agent checkpoints; proves deterministic graph scaling and does not claim 100 Gemini calls.
 
-The final architecture PNG uploaded to Devpost must match the actual deployed service/revision and must not include unverified Gemini Enterprise Agent Platform add-ons.
+The final architecture PNG uploaded to Devpost must match this truth boundary and must not include unverified Gemini Enterprise Agent Platform add-ons as active services.

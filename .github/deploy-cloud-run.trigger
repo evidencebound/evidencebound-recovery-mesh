@@ -1,1 +1,1 @@
-2026-08-14T19:27:00Z deploy main with strict ADK WorkerOutput schema
+2026-08-15T07:31+03:00 deploy dependency-bound Gemini worker contract

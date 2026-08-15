@@ -1,0 +1,119 @@
+name: agent-registry-registration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/agent-registry-registration.yml
+      - .github/agent-registry.trigger
+      - scripts/register-agent-registry.sh
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  RECOVERY_MESH_AGENT_REGISTRY_LOCATION: global
+  RECOVERY_MESH_AGENT_REGISTRY_SERVICE_ID: recovery-mesh-fleet
+  RECOVERY_MESH_AGENT_REGISTRY_DISPLAY_NAME: EvidenceBound Recovery Mesh
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main branch
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "BLOCKER=Agent Registry mutation is restricted to refs/heads/main" >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Verify identity and live Cloud Run target
+        run: |
+          set -euo pipefail
+          ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n1)"
+          echo "ACTIVE_ACCOUNT=${ACTIVE_ACCOUNT}"
+          test "$ACTIVE_ACCOUNT" = "$DEPLOYER_SERVICE_ACCOUNT"
+          test "$(gcloud config get-value project 2>/dev/null)" = "$GOOGLE_CLOUD_PROJECT"
+          SERVICE_URL="$(gcloud run services describe "$RECOVERY_MESH_SERVICE" \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --region "$GOOGLE_CLOUD_RUN_REGION" \
+            --format='value(status.url)')"
+          test -n "$SERVICE_URL"
+          echo "CLOUD_RUN_SERVICE_URL=${SERVICE_URL}"
+
+      - name: Ensure Agent Registry API is enabled
+        run: |
+          set -euo pipefail
+          ENABLED="$(gcloud services list --enabled \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --filter='config.name:agentregistry.googleapis.com' \
+            --format='value(config.name)')"
+          if [ "$ENABLED" != "agentregistry.googleapis.com" ]; then
+            echo "Agent Registry API is disabled; attempting bounded control-plane enablement."
+            if ! gcloud services enable agentregistry.googleapis.com \
+              --project "$GOOGLE_CLOUD_PROJECT" \
+              --quiet; then
+              echo "BLOCKER=deployer identity cannot enable agentregistry.googleapis.com; owner must enable the API or grant serviceusage.services.enable" >&2
+              exit 20
+            fi
+          fi
+          test "$(gcloud services list --enabled \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --filter='config.name:agentregistry.googleapis.com' \
+            --format='value(config.name)')" = "agentregistry.googleapis.com"
+          echo "AGENT_REGISTRY_API=ENABLED"
+
+      - name: Register Recovery Mesh as a standard REST agent
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/register-agent-registry.sh
+          ./scripts/register-agent-registry.sh | tee /tmp/agent-registry-receipt.txt
+
+      - name: Verify discoverable Agent projection
+        run: |
+          set -euo pipefail
+          AGENT_JSON="$(gcloud agent-registry agents list \
+            --project "$GOOGLE_CLOUD_PROJECT" \
+            --location "$RECOVERY_MESH_AGENT_REGISTRY_LOCATION" \
+            --filter="displayName=\"${RECOVERY_MESH_AGENT_REGISTRY_DISPLAY_NAME}\"" \
+            --limit=1 \
+            --format=json)"
+          test "$AGENT_JSON" != "[]"
+          printf '%s\n' "$AGENT_JSON" > /tmp/agent-registry-agent.json
+          echo "AGENT_REGISTRY_DISCOVERY=PASS"
+
+      - name: Publish sanitized evidence summary
+        if: success()
+        run: |
+          {
+            echo '## Agent Registry production receipt'
+            echo
+            echo '```text'
+            cat /tmp/agent-registry-receipt.txt
+            echo 'AGENT_REGISTRY_DISCOVERY=PASS'
+            echo '```'
+            echo
+            echo 'Registration is control-plane only. No Recovery Mesh backend code, Cloud Run revision, judge API, or runtime behavior was changed.'
+          } >> "$GITHUB_STEP_SUMMARY"

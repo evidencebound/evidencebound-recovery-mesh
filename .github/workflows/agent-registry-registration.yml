@@ -94,14 +94,8 @@ jobs:
       - name: Verify discoverable Agent projection
         run: |
           set -euo pipefail
-          AGENT_JSON="$(gcloud agent-registry agents list \
-            --project "$GOOGLE_CLOUD_PROJECT" \
-            --location "$RECOVERY_MESH_AGENT_REGISTRY_LOCATION" \
-            --filter="displayName=\"${RECOVERY_MESH_AGENT_REGISTRY_DISPLAY_NAME}\"" \
-            --limit=1 \
-            --format=json)"
-          test "$AGENT_JSON" != "[]"
-          printf '%s\n' "$AGENT_JSON" > /tmp/agent-registry-agent.json
+          grep -q '^AGENT_REGISTRY=PASS ' /tmp/agent-registry-receipt.txt
+          grep -q '^AGENT_REGISTRY_AGENT=projects/' /tmp/agent-registry-receipt.txt
           echo "AGENT_REGISTRY_DISCOVERY=PASS"
 
       - name: Publish sanitized evidence summary

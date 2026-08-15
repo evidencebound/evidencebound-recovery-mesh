@@ -117,13 +117,13 @@ flowchart LR
 
 Canonical architecture notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-### Enterprise persistence boundary — intentional production freeze
+### Enterprise persistence boundary — verified submission scope
 
-The live hackathon deployment intentionally uses a **process-local in-memory hot store** for run state. This keeps the verified recovery path bounded, fast, and isolated from new database/IAM failure modes immediately before judging. The production backend is therefore frozen after the verified Cloud Run acceptance run rather than being changed to add persistence late in the submission cycle.
+The live judge deployment validates the Recovery Mesh recovery control plane with a **process-local in-memory hot store**. That is the current verified runtime boundary; durable cross-session or multi-week persistence is **not** claimed in the live submission.
 
-For enterprise deployment, the architecture reserves a **storage-adapter extension point** after the Flight Recorder event/checkpoint stream. A production implementation can persist the same checkpoint/event schema asynchronously to services such as **Firestore** for multi-week operational state and **BigQuery** for long-term audit analytics/data-sovereignty workflows. Those sinks are an **enterprise architecture extension, not active integrations in this live submission**, and no claim is made that the current demo streams to Firestore or BigQuery.
+The Flight Recorder already emits typed `FlightEvent` records and checkpoint objects with stable run/checkpoint IDs, dependency metadata, digests, policy version, provenance, integrity state and timestamps. Those structured records form the persistence boundary. In an enterprise deployment, a **separately verified** durable adapter can persist the same records to services such as **Firestore** for cross-session operational state and route audit history to **BigQuery / Cloud Logging** for long-retention analysis. Those services are **enterprise extension targets, not active integrations in this submission**.
 
-This separation is deliberate: deterministic trust, invalidation, blast-radius, reuse and action-gating semantics remain independent of the persistence provider. Adding a durable provider changes storage availability and retention, not who is allowed to mark state trusted or authorize an action.
+This separation is architectural, not a claim that a future persistence box satisfies the Fortified multi-week-context requirement today. Deterministic trust, invalidation, blast-radius, reuse and action-gating semantics remain independent of the storage provider. A durable provider changes retention and restart survivability; it does not gain authority to mark state trusted or authorize an action.
 
 ## Trust graph
 
@@ -218,7 +218,7 @@ Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub
 
 ## Fortified Enterprise Fleet scope note
 
-Recovery Mesh is the fleet-integrity/recovery layer. The current judge slice demonstrates specialized agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit history, Google Cloud deployment and protected access. Durable multi-week storage is represented as a separated enterprise persistence extension rather than an unverified last-minute production dependency. The submission does **not** claim Agent Registry, Memory Bank, Model Armor, Firestore persistence, BigQuery export or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
+Recovery Mesh is the fleet-integrity and selective-recovery plane for a Fortified Enterprise deployment. The current judge slice demonstrates four specialized ADK agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit events, Google Cloud deployment, protected access and bounded service identities. It does **not** claim that the process-local demo store provides multi-week context, and it does **not** claim Agent Registry, Agent Runtime, Memory Bank, Model Armor, Firestore persistence, BigQuery export or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
 
 ## New-project disclosure
 

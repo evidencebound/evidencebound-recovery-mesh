@@ -2,6 +2,7 @@
 
 [![Cloud Run](https://img.shields.io/badge/Cloud%20Run-PASS-2ea44f)](https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/)
 ![Live Acceptance](https://img.shields.io/badge/Live%20Acceptance-PASS-2ea44f)
+![Agent Registry](https://img.shields.io/badge/Agent%20Registry-PASS-2ea44f)
 ![Vertex AI](https://img.shields.io/badge/Vertex%20AI-Gemini%203.5%20Flash-4285F4)
 ![Google ADK](https://img.shields.io/badge/Google%20ADK-2.7.0-4285F4)
 
@@ -30,6 +31,9 @@ The Flight Recorder renders this sequence from real runtime state. Gemini can re
 | Current revision | `evidencebound-recovery-mesh-00005-82k` |
 | Vertex AI | `gemini-3.5-flash` |
 | Google agent framework | ADK `2.7.0` |
+| Google Agent Registry | `PASS` — fleet entry point registered + read-only Agent discovery verified |
+| Agent Registry Service | `projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet` |
+| Agent Registry workflow | `31871557186` |
 | Protected judge API | unauthenticated `POST /api/runs` -> `401` |
 | Live baseline | `4` Google ADK agents |
 | Controlled trust break | `PASS` |
@@ -58,6 +62,20 @@ Saved:               1 model call / 423 input tokens (~24%)
 ```
 
 Both are controlled-run measurements, not general savings claims. Token counts vary across live Gemini executions; the Flight Recorder therefore displays each run's actual receipt rather than a hard-coded percentage.
+
+### Verified Agent Registry receipt
+
+Recovery Mesh is manually registered in **Google Agent Registry** as the discoverable fleet entry point for the existing Cloud Run service. Registration is control-plane only: it did not change the Recovery Mesh backend, Cloud Run revision, judge API, runtime behavior, Gemini model configuration, or internal Trust Graph semantics.
+
+```text
+AGENT_REGISTRY=PASS operation=created location=global transport=rest-v1 discovery=service-registry-resource
+AGENT_REGISTRY_SERVICE=projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet
+AGENT_REGISTRY_AGENT=projects/457699623691/locations/global/agents/agentregistry-00000000-0000-0000-a7f5-b9837959f789
+AGENT_REGISTRY_INTERFACE=https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app
+AGENT_REGISTRY_DISCOVERY=PASS
+```
+
+The Registry entry represents the **Recovery Mesh fleet entry point**. This submission does not claim that each of the four internal ADK roles is separately registered.
 
 ## Live judge UI
 
@@ -113,6 +131,7 @@ flowchart LR
   X --> F[Flight Recorder]
   G --> F
   F --> CR[Cloud Run]
+  CR -. control-plane registration .-> AR[Google Agent Registry · LIVE / VERIFIED]
 ```
 
 Canonical architecture notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -201,9 +220,13 @@ Runtime SA: recovery-mesh-runtime@evidencebound-rm-c977c1.iam.gserviceaccount.co
 Build SA: recovery-mesh-build@evidencebound-rm-c977c1.iam.gserviceaccount.com
 Model: gemini-3.5-flash
 Health: /health
+Agent Registry location: global
+Agent Registry Service: recovery-mesh-fleet
 ```
 
 Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub deploys keylessly through Workload Identity Federation restricted to this repository, owner, and `main` branch. Each production deploy performs a live Vertex/Gemini preflight and protected end-to-end recovery smoke.
+
+Agent Registry registration is a separate main-only, keyless control-plane workflow. It uses the existing WIF deployer identity, waits for the Google long-running operation, and fails closed unless the generated read-only Agent is observable before reporting PASS.
 
 ## Security and trust boundary
 
@@ -214,11 +237,14 @@ Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub
 - Gemini worker output is constrained to strict `WorkerOutput` JSON and allowed Trust Graph dependency IDs;
 - deterministic trust, provenance, integrity and policy gates remain authoritative;
 - side effects are fail-closed and idempotency-protected;
-- live model calls are process-bounded to reduce accidental public-demo traffic.
+- live model calls are process-bounded to reduce accidental public-demo traffic;
+- Agent Registry is catalog/discovery control plane only and does not override Recovery Mesh trust state or action authorization.
 
 ## Fortified Enterprise Fleet scope note
 
-Recovery Mesh is the fleet-integrity and selective-recovery plane for a Fortified Enterprise deployment. The current judge slice demonstrates four specialized ADK agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit events, Google Cloud deployment, protected access and bounded service identities. It does **not** claim that the process-local demo store provides multi-week context, and it does **not** claim Agent Registry, Agent Runtime, Memory Bank, Model Armor, Firestore persistence, BigQuery export or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
+Recovery Mesh is the fleet-integrity and selective-recovery plane for a Fortified Enterprise deployment. The current judge slice demonstrates four specialized ADK agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit events, Google Cloud deployment, protected access, bounded service identities, **and a live Google Agent Registry catalog/discovery entry for the Recovery Mesh fleet endpoint**.
+
+It does **not** claim that the process-local demo store provides multi-week context. It also does not claim Agent Runtime, Memory Bank, Model Armor, Firestore persistence, BigQuery export, or separate Registry entries for each internal ADK role without a separately verified integration.
 
 ## New-project disclosure
 

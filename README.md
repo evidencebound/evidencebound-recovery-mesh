@@ -117,6 +117,14 @@ flowchart LR
 
 Canonical architecture notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+### Enterprise persistence boundary — verified submission scope
+
+The live judge deployment validates the Recovery Mesh recovery control plane with a **process-local in-memory hot store**. That is the current verified runtime boundary; durable cross-session or multi-week persistence is **not** claimed in the live submission.
+
+The Flight Recorder already emits typed `FlightEvent` records and checkpoint objects with stable run/checkpoint IDs, dependency metadata, digests, policy version, provenance, integrity state and timestamps. Those structured records form the persistence boundary. In an enterprise deployment, a **separately verified** durable adapter can persist the same records to services such as **Firestore** for cross-session operational state and route audit history to **BigQuery / Cloud Logging** for long-retention analysis. Those services are **enterprise extension targets, not active integrations in this submission**.
+
+This separation is architectural, not a claim that a future persistence box satisfies the Fortified multi-week-context requirement today. Deterministic trust, invalidation, blast-radius, reuse and action-gating semantics remain independent of the storage provider. A durable provider changes retention and restart survivability; it does not gain authority to mark state trusted or authorize an action.
+
 ## Trust graph
 
 ```text
@@ -210,7 +218,7 @@ Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub
 
 ## Fortified Enterprise Fleet scope note
 
-Recovery Mesh is the fleet-integrity/recovery layer. The current judge slice demonstrates specialized agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit history, Google Cloud deployment and protected access. It does **not** claim durable multi-week enterprise memory, Agent Registry, Memory Bank, Model Armor or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
+Recovery Mesh is the fleet-integrity and selective-recovery plane for a Fortified Enterprise deployment. The current judge slice demonstrates four specialized ADK agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit events, Google Cloud deployment, protected access and bounded service identities. It does **not** claim that the process-local demo store provides multi-week context, and it does **not** claim Agent Registry, Agent Runtime, Memory Bank, Model Armor, Firestore persistence, BigQuery export or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
 
 ## New-project disclosure
 
@@ -221,11 +229,9 @@ This is a new isolated project created during the August 2026 submission period.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and trust boundaries
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, controls, and explicit non-claims
 - [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — acceptance gates
-- [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md) — fastest live judge flow
 - [`docs/DEVPOST_SUBMISSION_MATRIX.md`](docs/DEVPOST_SUBMISSION_MATRIX.md) — submission evidence matrix
 - [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — <=4-minute recording plan
-- [`docs/BONUS_CONTENT_DRAFT.md`](docs/BONUS_CONTENT_DRAFT.md) — unpublished article/social drafts
 
 ## Scope discipline
 
-Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is intentionally excluded from the judge-ready core; adding a second workload is not worth destabilizing the production-accepted recovery path before submission.
+Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is not part of the judge-ready core and is intentionally excluded unless a separate, verified integration can be added without destabilizing this submission.

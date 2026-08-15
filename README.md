@@ -117,6 +117,14 @@ flowchart LR
 
 Canonical architecture notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+### Enterprise persistence boundary — intentional production freeze
+
+The live hackathon deployment intentionally uses a **process-local in-memory hot store** for run state. This keeps the verified recovery path bounded, fast, and isolated from new database/IAM failure modes immediately before judging. The production backend is therefore frozen after the verified Cloud Run acceptance run rather than being changed to add persistence late in the submission cycle.
+
+For enterprise deployment, the architecture reserves a **storage-adapter extension point** after the Flight Recorder event/checkpoint stream. A production implementation can persist the same checkpoint/event schema asynchronously to services such as **Firestore** for multi-week operational state and **BigQuery** for long-term audit analytics/data-sovereignty workflows. Those sinks are an **enterprise architecture extension, not active integrations in this live submission**, and no claim is made that the current demo streams to Firestore or BigQuery.
+
+This separation is deliberate: deterministic trust, invalidation, blast-radius, reuse and action-gating semantics remain independent of the persistence provider. Adding a durable provider changes storage availability and retention, not who is allowed to mark state trusted or authorize an action.
+
 ## Trust graph
 
 ```text
@@ -210,7 +218,7 @@ Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub
 
 ## Fortified Enterprise Fleet scope note
 
-Recovery Mesh is the fleet-integrity/recovery layer. The current judge slice demonstrates specialized agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit history, Google Cloud deployment and protected access. It does **not** claim durable multi-week enterprise memory, Agent Registry, Memory Bank, Model Armor or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
+Recovery Mesh is the fleet-integrity/recovery layer. The current judge slice demonstrates specialized agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit history, Google Cloud deployment and protected access. Durable multi-week storage is represented as a separated enterprise persistence extension rather than an unverified last-minute production dependency. The submission does **not** claim Agent Registry, Memory Bank, Model Armor, Firestore persistence, BigQuery export or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
 
 ## New-project disclosure
 
@@ -221,11 +229,9 @@ This is a new isolated project created during the August 2026 submission period.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and trust boundaries
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, controls, and explicit non-claims
 - [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — acceptance gates
-- [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md) — fastest live judge flow
 - [`docs/DEVPOST_SUBMISSION_MATRIX.md`](docs/DEVPOST_SUBMISSION_MATRIX.md) — submission evidence matrix
 - [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — <=4-minute recording plan
-- [`docs/BONUS_CONTENT_DRAFT.md`](docs/BONUS_CONTENT_DRAFT.md) — unpublished article/social drafts
 
 ## Scope discipline
 
-Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is intentionally excluded from the judge-ready core; adding a second workload is not worth destabilizing the production-accepted recovery path before submission.
+Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is not part of the judge-ready core and is intentionally excluded unless a separate, verified integration can be added without destabilizing this submission.

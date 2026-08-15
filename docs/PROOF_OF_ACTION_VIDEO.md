@@ -1,18 +1,26 @@
 # <=4-minute Proof-of-Action video plan
 
-**Status: recording pending; production acceptance values are locked.** This document is the final recording script, not proof that a public video has already been recorded or uploaded.
+**Status: recording pending.** This is the final recording script, not proof that a public video has already been recorded or uploaded.
 
-Production receipt used by this script:
+Current production deployment:
 
 ```text
-Cloud Run revision: evidencebound-recovery-mesh-00004-24m
-Acceptance run: run-4707af5a2fb6
+Cloud Run revision: evidencebound-recovery-mesh-00005-82k
 Provider: google_adk_vertex
 Model: gemini-3.5-flash
+Latest deployment smoke: run-439f7d87c2a3
+```
+
+Reference acceptance benchmark requested for the submission narrative:
+
+```text
+Acceptance run: run-4707af5a2fb6
 Full restart: 4 model calls / 1781 input tokens
 Selective recovery: 3 model calls / 1358 input tokens
 Measured saving: 1 model call / 423 input tokens (~24%)
 ```
+
+The fresh run recorded in the video can have different token counts. **Never narrate the reference numbers as if they came from a different live run.** Show the fresh run's actual Flight Recorder values first; then, if desired, show the README's clearly labeled reference acceptance receipt with `1781 / 1358`.
 
 ## Pre-recording security setup — not shown in video
 
@@ -75,15 +83,17 @@ Core visual moment:
 SAFE WORK REUSED -> AFFECTED BRANCH RECOMPUTED -> VERIFIED RECOVERY
 ```
 
-## 2:10-2:43 — Measured production receipt
+## 2:10-2:45 — Measured production receipt
 
-Show the live benchmark panel and say:
+Keep the fresh run's benchmark panel visible. Read the **numbers actually shown on screen**.
 
-> In this controlled production run, a full restart used 4 model calls and 1781 input tokens. Selective recovery used 3 calls and 1358 input tokens — one model call and 423 input tokens saved, about 24% for this run.
+Then spend a few seconds on the README reference receipt and say:
 
-Keep the measurement-class label visible. State explicitly that this is a measured controlled-run result, not a universal savings claim.
+> Our reference production acceptance run measured a full restart at 4 model calls and 1781 input tokens versus selective recovery at 3 calls and 1358 input tokens — one call and 423 input tokens saved, about 24% for that controlled run. Live Gemini token counts vary, so the Flight Recorder reports each run's actual values.
 
-## 2:43-3:08 — Fleet-scale proof
+This satisfies the requested `1781 vs 1358` proof without misattributing it to the fresh recording run.
+
+## 2:45-3:08 — Fleet-scale proof
 
 Show the deterministic 100-agent-checkpoint scale probe separately and label it clearly as **synthetic deterministic graph scale**, not 100 live Gemini calls.
 
@@ -102,7 +112,7 @@ Show Google Cloud Console evidence for the exact deployment:
 
 - project `evidencebound-rm-c977c1`;
 - Cloud Run service `evidencebound-recovery-mesh`;
-- revision `evidencebound-recovery-mesh-00004-24m` or the newer revision created only by the final UI patch deployment;
+- revision `evidencebound-recovery-mesh-00005-82k`;
 - runtime service account;
 - live `.run.app` URL;
 - recent request/log evidence;

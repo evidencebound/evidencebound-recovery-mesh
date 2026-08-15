@@ -22,12 +22,12 @@ TRUST BREAK
 
 The Flight Recorder renders this sequence from real runtime state. Gemini can reason and produce bounded structured output, but it cannot mark checkpoints VERIFIED, choose the blast radius, override provenance/policy checks, or authorize the final action.
 
-## Verified production receipt — 2026-08-15
+## Current production deployment — 2026-08-15
 
 | Gate | Receipt |
 |---|---|
 | Cloud Run | `PASS` |
-| Revision | `evidencebound-recovery-mesh-00004-24m` |
+| Current revision | `evidencebound-recovery-mesh-00005-82k` |
 | Vertex AI | `gemini-3.5-flash` |
 | Google agent framework | ADK `2.7.0` |
 | Protected judge API | unauthenticated `POST /api/runs` -> `401` |
@@ -37,9 +37,19 @@ The Flight Recorder renders this sequence from real runtime state. Gemini can re
 | Reused work | `scout` preserved |
 | Selective recovery | `3` agents rerun, `1` agent reused |
 | Final action | `VERIFIED` |
-| Production acceptance run | `run-4707af5a2fb6` |
+| Current revision smoke run | `run-439f7d87c2a3` |
 
-Measured on that exact production acceptance run:
+The current revision's deployment smoke measured:
+
+```text
+Full restart:        4 model calls / 1728 input tokens
+Selective recovery: 3 model calls / 1393 input tokens
+Saved:               1 model call / 335 input tokens (~19%)
+```
+
+### Reference acceptance benchmark
+
+The earlier production acceptance run `run-4707af5a2fb6` measured:
 
 ```text
 Full restart:        4 model calls / 1781 input tokens
@@ -47,7 +57,7 @@ Selective recovery: 3 model calls / 1358 input tokens
 Saved:               1 model call / 423 input tokens (~24%)
 ```
 
-These are controlled-run measurements, not a general savings claim.
+Both are controlled-run measurements, not general savings claims. Token counts vary across live Gemini executions; the Flight Recorder therefore displays each run's actual receipt rather than a hard-coded percentage.
 
 ## Live judge UI
 
@@ -65,9 +75,11 @@ https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evide
 
 The action APIs are protected. Enter the private testing key supplied in the Devpost judge-only instructions. The browser keeps it only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
 
-After unlock, the autorun URL creates a **fresh live Google ADK / Gemini baseline** and injects the controlled stale-evidence fault through the same production API. The graph then shows the trust-break source, exact contaminated branch, blocked `publish_action`, and preserved `Scout`. Click **Autonomous selective recovery** to rerun only the affected branch and produce the measured recovery receipt.
+After unlock, the autorun URL creates a **fresh live Google ADK / Gemini baseline** and injects the controlled stale-evidence fault through the same production API. The graph then shows `history_snapshot · TRUST BREAK`, the exact contaminated branch, blocked `publish_action`, and `scout · REUSED`. Click **Autonomous selective recovery** to rerun only the affected branch and produce the measured recovery receipt.
 
-`run-4707af5a2fb6` is an auditable production acceptance receipt, but run objects are intentionally process-local in this bounded demo. It is **not** presented as a durable permalink after Cloud Run scales to zero. Judges should use the fresh autorun path above for reproducible live verification.
+Historical production run IDs above are audit receipts, but run objects are intentionally process-local in this bounded demo. They are **not** presented as durable permalinks after Cloud Run scales to zero. Judges should use the fresh autorun path above for reproducible live verification.
+
+Detailed judge steps: [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md).
 
 ## Architecture
 
@@ -165,7 +177,7 @@ node --check static/app.js
 PYTHONPATH=src python scripts/benchmark-scale.py
 ```
 
-CI additionally validates shell entrypoints, the production smoke harness, secret scanning, the exact deterministic scale receipt, and a Docker build.
+CI additionally validates shell entrypoints, the production smoke harness, judge-facing UI contracts, secret scanning, the exact deterministic scale receipt, and a Docker build.
 
 The deterministic scale probe exercises **100 synthetic agent checkpoints** with the same blast-radius planner and locks the controlled receipt to `14 affected / 86 reused / 1 blocked action`. It is explicitly not evidence of 100 live Gemini calls.
 
@@ -196,6 +208,10 @@ Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub
 - side effects are fail-closed and idempotency-protected;
 - live model calls are process-bounded to reduce accidental public-demo traffic.
 
+## Fortified Enterprise Fleet scope note
+
+Recovery Mesh is the fleet-integrity/recovery layer. The current judge slice demonstrates specialized agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit history, Google Cloud deployment and protected access. It does **not** claim durable multi-week enterprise memory, Agent Registry, Memory Bank, Model Armor or other Gemini Enterprise Agent Platform capabilities without a separately verified integration.
+
 ## New-project disclosure
 
 This is a new isolated project created during the August 2026 submission period. No SignalReview production source or prior EvidenceBound implementation source is copied into this repository. Pre-existing concepts and the clean-room boundary are disclosed in [`PREEXISTING_WORK.md`](PREEXISTING_WORK.md).
@@ -205,9 +221,11 @@ This is a new isolated project created during the August 2026 submission period.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and trust boundaries
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, controls, and explicit non-claims
 - [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — acceptance gates
+- [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md) — fastest live judge flow
 - [`docs/DEVPOST_SUBMISSION_MATRIX.md`](docs/DEVPOST_SUBMISSION_MATRIX.md) — submission evidence matrix
 - [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — <=4-minute recording plan
+- [`docs/BONUS_CONTENT_DRAFT.md`](docs/BONUS_CONTENT_DRAFT.md) — unpublished article/social drafts
 
 ## Scope discipline
 
-Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is not part of the judge-ready core and is intentionally excluded unless a separate, verified integration can be added without destabilizing this submission.
+Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is intentionally excluded from the judge-ready core; adding a second workload is not worth destabilizing the production-accepted recovery path before submission.

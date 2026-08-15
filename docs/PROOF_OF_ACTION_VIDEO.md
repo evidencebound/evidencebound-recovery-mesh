@@ -1,104 +1,70 @@
-# <=4-minute Proof-of-Action video plan
+# Final Proof-of-Action video receipt
 
-**Status: recording pending.** This is the final recording script, not proof that a public video has already been recorded or uploaded.
+**Status: PUBLIC / SUBMITTED.**
 
-Current production deployment:
+Public YouTube video:
+
+`https://youtu.be/AExuVCC-m7o`
+
+Final title:
+
+`EvidenceBound Recovery Mesh — Proof of Action | Google All Things Agentic 2026`
+
+Final duration: approximately **3:28**, below the hackathon's ~4-minute limit.
+
+## What the final video proves
+
+The video preserves the judge sequence:
 
 ```text
-Cloud Run revision: evidencebound-recovery-mesh-00005-82k
-Provider: google_adk_vertex
-Model: gemini-3.5-flash
-Latest deployment smoke: run-439f7d87c2a3
-Agent Registry workflow: 31871557186 — PASS
+TRUST BREAK
+  -> EXACT BLAST RADIUS
+  -> ACTION BLOCKED
+  -> SAFE WORK REUSED
+  -> AFFECTED BRANCH RECOMPUTED
+  -> VERIFIED RECOVERY
 ```
 
-Reference acceptance benchmark requested for the submission narrative:
+It uses sanitized captures from the protected production judge flow, not mock UI states.
+
+Fresh browser-capture workflow:
 
 ```text
-Acceptance run: run-4707af5a2fb6
-Full restart: 4 model calls / 1781 input tokens
+GitHub Actions workflow: judge-video-capture
+Run: 31876152726
+Result: SUCCESS
+Provider: GOOGLE_ADK_VERTEX / GEMINI-3.5-FLASH
+Fresh captured run: run-72e5ad9cd0e8
+```
+
+The capture workflow retrieves the private judge key through the existing WIF + Secret Manager control path, masks it before browser use, drives the production UI with Playwright, and uploads only sanitized screenshots/receipts. The judge-key value is never present in the public video.
+
+## Fresh measured run shown in the final video
+
+```text
+Full restart:        4 model calls / 1788 input tokens
+Selective recovery: 3 model calls / 1427 input tokens
+Saved:               1 model call / 361 input tokens (20% for this controlled run)
+```
+
+These numbers belong to the fresh capture shown in the final video.
+
+## Reference acceptance benchmark
+
+The video separately labels the earlier production acceptance receipt:
+
+```text
+Acceptance run:      run-4707af5a2fb6
+Full restart:        4 model calls / 1781 input tokens
 Selective recovery: 3 model calls / 1358 input tokens
-Measured saving: 1 model call / 423 input tokens (~24%)
+Saved:               1 model call / 423 input tokens (~24% for that controlled run)
 ```
 
-The fresh run recorded in the video can have different token counts. **Never narrate the reference numbers as if they came from a different live run.** Show the fresh run's actual Flight Recorder values first; then, if desired, show the README's clearly labeled reference acceptance receipt with `1781 / 1358`.
+Live Gemini token usage varies between runs, so neither percentage is presented as a universal savings claim.
 
-## Pre-recording security setup — not shown in video
+## Fleet-scale proof
 
-- Open the live Flight Recorder.
-- Retrieve the private judge testing key locally from Secret Manager.
-- Enter it into the **Bounded Judge Access** box before recording begins.
-- Verify the UI says the key is stored/unlocked.
-- Never show the secret value, Secret Manager reveal dialog, terminal output containing the value, browser devtools request headers, or Devpost private testing field in the recording.
-- The public video may show only that judge access is protected, never the credential itself.
-
-## 0:00-0:20 — Problem and product
-
-Show the live Cloud Run Flight Recorder and say:
-
-> EvidenceBound Recovery Mesh is a trust-aware flight recorder and selective self-healing engine for autonomous agent fleets. A trust break freezes unsafe action, computes exact downstream impact, preserves still-verifiable work, reruns only affected agents, then re-verifies before resuming.
-
-Keep the Cloud Run origin visible. Do not place credentials in the URL.
-
-## 0:20-0:45 — Working fleet
-
-Create a fresh protected production run. Show:
-
-- judge controls unlocked without revealing the key;
-- `google_adk_vertex`;
-- `gemini-3.5-flash`;
-- four ADK roles: Statistician, Scout, Skeptic, Orchestrator;
-- baseline checkpoints `VERIFIED`.
-
-Do not call deterministic test execution a Gemini run. Do not show the private request header.
-
-## 0:45-1:25 — Trust break and action block
-
-Inject the visibly labeled controlled `stale_evidence` fault through the production UI/API.
-
-Show, in this order:
-
-1. `TRUST BREAK` at `history_snapshot`;
-2. exact blast radius;
-3. `publish_action = BLOCKED`;
-4. `scout = VERIFIED · REUSED`;
-5. recomputation set selected by Recovery Mesh, not by the judge.
-
-Core visual moment:
-
-```text
-TRUST BREAK -> BLAST RADIUS -> ACTION BLOCKED
-```
-
-Hold this screen long enough for the red trust-break node, affected edges, blocked action, and green reused Scout to be readable.
-
-## 1:25-2:10 — Selective autonomous recovery
-
-Trigger **Autonomous selective recovery** once. Show that only Statistician, Skeptic, and Orchestrator rerun while Scout remains reused.
-
-Show the affected checkpoints re-verifying and `publish_action` resuming only after dependencies become `VERIFIED`.
-
-Core visual moment:
-
-```text
-SAFE WORK REUSED -> AFFECTED BRANCH RECOMPUTED -> VERIFIED RECOVERY
-```
-
-## 2:10-2:43 — Measured production receipt
-
-Keep the fresh run's benchmark panel visible. Read the **numbers actually shown on screen**.
-
-Then spend a few seconds on the README reference receipt and say:
-
-> Our reference production acceptance run measured a full restart at 4 model calls and 1781 input tokens versus selective recovery at 3 calls and 1358 input tokens — one call and 423 input tokens saved, about 24% for that controlled run. Live Gemini token counts vary, so the Flight Recorder reports each run's actual values.
-
-This satisfies the requested `1781 vs 1358` proof without misattributing it to the fresh recording run.
-
-## 2:43-3:03 — Fleet-scale proof
-
-Show the deterministic 100-agent-checkpoint scale probe separately and label it clearly as **synthetic deterministic graph scale**, not 100 live Gemini calls.
-
-Current locked scale receipt:
+A separate deterministic graph probe is explicitly labeled synthetic graph-scale evidence:
 
 ```text
 100 agent checkpoints
@@ -107,38 +73,33 @@ Current locked scale receipt:
 1 blocked action
 ```
 
-## 3:03-3:42 — Google Cloud + enterprise catalog + security proof
+The video does **not** present this as 100 live Gemini calls.
 
-Show Google Cloud Console evidence for the exact deployment:
+## Google Cloud / enterprise control-plane proof
 
-- project `evidencebound-rm-c977c1`;
-- Cloud Run service `evidencebound-recovery-mesh`;
-- revision `evidencebound-recovery-mesh-00005-82k`;
-- runtime service account;
-- live `.run.app` URL;
-- recent request/log evidence;
-- Google Agent Registry entry `recovery-mesh-fleet` and the generated discoverable Agent;
-- Secret Manager secret **name/version only**: `recovery-mesh-judge-key:1`;
-- sanitized receipt: `JUDGE_API_AUTH=PASS unauthenticated_post=401`.
+The final cut identifies the verified stack and receipts:
 
-Narrate the Registry proof in one sentence:
+- Cloud Run revision `evidencebound-recovery-mesh-00005-82k`;
+- Google ADK `2.7.0`;
+- Vertex AI / `gemini-3.5-flash`;
+- Secret Manager judge credential by **name/version only**;
+- keyless Workload Identity Federation;
+- Google Agent Registry workflow `31871557186`;
+- Registry Service `recovery-mesh-fleet`;
+- generated read-only Agent discovery `PASS`.
 
-> The same live Cloud Run fleet endpoint is cataloged in Google Agent Registry; registration and read-only Agent discovery passed through a separate keyless control-plane workflow without changing the production runtime.
+Agent Registry is shown as catalog/discovery control plane only. It does not override the deterministic Trust Graph or action gate.
 
-Optional if the screen can show the GitHub Actions summary clearly for 2–3 seconds:
+## Explicit non-claims retained in the video
 
-```text
-AGENT_REGISTRY=PASS
-AGENT_REGISTRY_DISCOVERY=PASS
-workflow 31871557186
-```
+The final video does not claim durable multi-week context, Firestore persistence, BigQuery export, Agent Runtime, Memory Bank, Model Armor, or separate Agent Registry entries for each internal ADK role.
 
-Do not reveal the judge secret value. Do not claim that each internal ADK role is separately registered. Do not claim durable multi-week memory, Agent Runtime, Memory Bank, Model Armor, Firestore, or BigQuery as live integrations.
+The live run store remains process-local in this bounded hackathon deployment. Durable persistence remains a separated enterprise extension boundary.
 
-## 3:42-3:58 — Close
+## Audio / accessibility
 
-Show the recovered trust graph and final action state. Close with:
+- English ElevenLabs narration.
+- English YouTube subtitles uploaded from the exact voiceover transcript.
+- Music: `Technology - Tech Technology` by APALONBeats, downloaded under the Pixabay Content License.
 
-> Recovery Mesh does not trust persisted state because it exists. It reuses work only while its evidence, integrity, dependencies, provenance, and policy remain verifiable.
-
-Target final duration: **3:45–3:58**. The final video must be public on YouTube or Vimeo and in English or have English subtitles.
+The video is the final public Proof-of-Action asset referenced by the Devpost submission.

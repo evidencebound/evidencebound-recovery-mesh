@@ -1,53 +1,97 @@
-# Submission preflight — 2026-08-15
+# Final submission preflight — 2026-08-15
 
-## Core production evidence
-
-Current submission-ready deployment:
+## Current production evidence
 
 - Cloud Run revision: `evidencebound-recovery-mesh-00005-82k`
-- Current revision smoke run: `run-439f7d87c2a3`
 - Provider: `google_adk_vertex`
 - Model: `gemini-3.5-flash`
-- Live baseline: 4 Google ADK agents
+- Google ADK: `2.7.0`
+- Live baseline: 4 specialized ADK agents
 - Trust break: stale evidence at `history_snapshot`
 - Blocked action: `publish_action`
 - Reused agent checkpoint: `scout`
 - Selective reruns: `statistician`, `skeptic`, `orchestrator`
 - Final action: `VERIFIED`
-- Current smoke: full restart 4 calls / 1728 input tokens; selective recovery 3 calls / 1393 input tokens
+- Google Agent Registry: `PASS`
+- Agent Registry workflow: `31871557186`
+- Agent Registry Service: `recovery-mesh-fleet`
+- Agent Registry discovery: `PASS`
 
-Reference production acceptance receipt:
+## Final video receipt
+
+Public video:
+
+`https://youtu.be/AExuVCC-m7o`
+
+Fresh sanitized browser capture:
+
+- workflow: `31876152726` — `SUCCESS`
+- captured run: `run-72e5ad9cd0e8`
+- full restart: `4 calls / 1788 input tokens`
+- selective recovery: `3 calls / 1427 input tokens`
+- saving in that run: `1 call / 361 input tokens (20%)`
+
+Reference production acceptance remains separately labeled:
 
 - run: `run-4707af5a2fb6`
-- full restart: 4 model calls / 1781 input tokens
-- selective recovery: 3 model calls / 1358 input tokens
-- controlled-run saving: 1 model call / 423 input tokens (~24%)
+- full restart: `4 calls / 1781 input tokens`
+- selective recovery: `3 calls / 1358 input tokens`
+- saving in that run: `1 call / 423 input tokens (~24%)`
 
-## Submission checklist
+These are controlled-run measurements, not universal savings claims.
+
+## Final Devpost state
+
+- Submission ID: `1136853`
+- Status: `Submitted`
+- Category: `Fortified Enterprise Fleet`
+- Submitter type: `Team of individuals`
+- Country: `Ukraine`
+- Public repo: `https://github.com/moneyparking/evidencebound-recovery-mesh`
+- Hosted judge UI: `https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/`
+- Video URL: `https://youtu.be/AExuVCC-m7o`
+- Architecture Diagram v2 uploaded in the required file field
+- Google SDK answer: `Agent Development Kit (ADK)`
+- Google Cloud service answer: `Cloud Run`
+- Google AI model answer: `Gemini 3.5 Flash via Vertex AI`
+- Bonus technical article URL added
+- Bonus LinkedIn URL added with `#AllThingsAgenticHackathon`
+- Devpost project thumbnail synchronized to the same visual identity as the YouTube thumbnail
+
+## Final checklist
 
 - [x] Core live Google ADK / Gemini / Cloud Run acceptance
 - [x] Fail-closed judge API auth receipt (`401` without key)
-- [x] Trust Graph / blast-radius UI implemented
-- [x] Final UI patch deployed: safe `/health`, judge autorun after unlock, historical trust-break/reuse visibility, exact benchmark counts
-- [x] Final UI revision passed protected end-to-end Cloud Run smoke
-- [x] Judge-first README prepared
-- [x] Architecture diagram available in README Mermaid
-- [x] Reproducible local setup instructions prepared
-- [x] Judge testing instructions prepared
-- [x] <=4-minute video script locked to measured receipts with live-vs-reference distinction
-- [x] Public technical article draft prepared
-- [x] Social-post draft prepared
-- [x] Devpost description updated from pre-production wording to current production receipts
-- [ ] Browser-level screenshot/video capture confirms the final graph visually in a real browser
-- [ ] Final public demo video recorded and uploaded to YouTube/Vimeo
-- [ ] Architecture diagram file confirmed/uploaded in required Devpost file field
-- [ ] Public technical article published and URL added to Devpost
-- [ ] Social post published with `#AllThingsAgenticHackathon` and URL added to Devpost
-- [ ] Optional additional Google AI model: only if genuinely integrated and verified; no bonus currently claimed
-- [ ] Final Devpost form audited and submitted/updated with video and any bonus URLs
+- [x] Trust Graph / exact blast-radius UI
+- [x] Current Cloud Run revision verified
+- [x] Google Agent Registry Service + generated Agent discovery verified
+- [x] Judge-first README with reproducible setup
+- [x] Judge testing instructions
+- [x] Protected browser-level capture of baseline / trust break / recovery / benchmark
+- [x] Final public <=4-minute YouTube video
+- [x] English subtitles
+- [x] Architecture Diagram v2 uploaded
+- [x] DEV.to bonus article published and URL added
+- [x] LinkedIn bonus post published and URL added
+- [x] Devpost project submitted
+- [x] Submitter type changed from `Individuals` to `Team of individuals`
+- [ ] Invited teammate has accepted the Devpost project invite and is visibly listed as a project member — owner-side verification required because the connector does not expose the team-member roster
+- [ ] Optional additional Google AI model bonus — intentionally not claimed; no extra model was integrated merely for points
 
-## Scope decision
+## Scope / truth boundary
 
-AdsForge is excluded from the core submission. A second workload is not worth destabilizing a production-accepted judge journey. The bounded four-agent workload already demonstrates specialization, deterministic trust propagation, fail-closed action, exact blast radius, selective recovery, and measured reuse.
+Recovery Mesh is the submitted product. AdsForge remains outside the submitted runtime and is not represented as a hackathon-built Recovery Mesh workload.
 
-No Gemini Enterprise Agent Platform service is claimed unless a real invocation and receipt are separately verified. The current demo's run store is process-local; durable multi-week enterprise memory remains an explicit Fortified-track gap rather than a fabricated claim.
+The live deployment uses process-local hot state. Durable multi-week context, Firestore persistence, BigQuery export, Agent Runtime, Memory Bank and Model Armor remain explicit non-claims unless separately implemented and verified.
+
+Google Agent Registry is a verified enterprise catalog/discovery integration for the Recovery Mesh fleet entry point; it is not trust authority and does not replace the deterministic verification, provenance, integrity, blast-radius or action-gating logic.
+
+## Prize-oriented status
+
+The submission now aligns with the three judging pillars:
+
+1. **Innovation & Operational Utility (40%)** — autonomous trust-break detection, exact blast radius, fail-closed action, selective recovery and safe reuse.
+2. **Architectural Discipline & Tech Stack (30%)** — deterministic trust boundary, specialized ADK roles, WIF, Secret Manager, Cloud Run, Agent Registry, explicit non-claims and failure handling.
+3. **Demo & Production Readiness (30%)** — public Proof-of-Action video, live Google Cloud deployment evidence, clean architecture diagram, reproducible README, protected judge route and measured receipts.
+
+Remaining owner-visible item: confirm that the invited teammate has accepted the Devpost project invite so the public team roster matches `Team of individuals` before judging.

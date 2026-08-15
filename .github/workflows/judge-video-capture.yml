@@ -1,0 +1,120 @@
+name: judge-video-capture
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/judge-video-capture.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+  GOOGLE_CLOUD_RUN_REGION: europe-west1
+  RECOVERY_MESH_SERVICE: evidencebound-recovery-mesh
+  WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+  DEPLOYER_SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+  JUDGE_SECRET: recovery-mesh-judge-key
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Resolve protected capture inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE_URL="$(gcloud run services describe "$RECOVERY_MESH_SERVICE" --project "$GOOGLE_CLOUD_PROJECT" --region "$GOOGLE_CLOUD_RUN_REGION" --format='value(status.url)')"
+          test -n "$SERVICE_URL"
+          JUDGE_KEY="$(gcloud secrets versions access 1 --secret "$JUDGE_SECRET" --project "$GOOGLE_CLOUD_PROJECT")"
+          test -n "$JUDGE_KEY"
+          echo "::add-mask::$JUDGE_KEY"
+          {
+            echo "SERVICE_URL=$SERVICE_URL"
+            echo "JUDGE_KEY=$JUDGE_KEY"
+          } >> "$GITHUB_ENV"
+          echo "CAPTURE_TARGET=$SERVICE_URL"
+
+      - name: Install Playwright Chromium
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Capture live Proof-of-Action states
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p video-capture
+          cat > /tmp/capture.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+
+          const base = process.env.SERVICE_URL;
+          const key = process.env.JUDGE_KEY;
+          if (!base || !key) throw new Error('missing capture inputs');
+
+          const browser = await chromium.launch({headless: true});
+          const page = await browser.newPage({viewport: {width: 1920, height: 1080}, deviceScaleFactor: 1});
+          page.setDefaultTimeout(180000);
+
+          const shot = async (name) => {
+            await page.screenshot({path: `video-capture/${name}.png`, fullPage: true});
+          };
+
+          await page.goto(base + '/', {waitUntil: 'networkidle'});
+          await page.locator('#judgeKey').fill(key);
+          await page.locator('#saveJudgeKey').click();
+          await page.locator('#accessState').filter({hasText: /KEY STORED/i}).waitFor();
+          await page.locator('#startRun').click();
+          await page.locator('#momentTitle').filter({hasText: /VERIFIED FLEET BASELINE/i}).waitFor();
+          await shot('01-live-baseline');
+          await page.locator('#proofStrip').screenshot({path: 'video-capture/01b-proof-strip-baseline.png'});
+
+          await page.locator('button[data-fault="stale_evidence"]').click();
+          await page.locator('#momentTitle').filter({hasText: /TRUST BREAK DETECTED/i}).waitFor();
+          await shot('02-trust-break-blocked');
+          await page.locator('#graphWrap').screenshot({path: 'video-capture/02b-trust-graph.png'});
+          await page.locator('#proofStrip').screenshot({path: 'video-capture/02c-proof-strip-break.png'});
+
+          await page.locator('#recover').click();
+          await page.locator('#momentTitle').filter({hasText: /SELECTIVE RECOVERY VERIFIED/i}).waitFor();
+          await shot('03-verified-recovery');
+          await page.locator('.benchmark-panel').screenshot({path: 'video-capture/03b-benchmark.png'});
+          await page.locator('#proofStrip').screenshot({path: 'video-capture/03c-proof-strip-recovered.png'});
+
+          const provider = (await page.locator('#executionProvider').innerText()).trim();
+          const runId = (await page.locator('#runId').innerText()).trim();
+          fs.writeFileSync('video-capture/capture-receipt.txt', `CAPTURE=PASS\nPROVIDER=${provider}\nRUN_ID=${runId}\n`);
+
+          await browser.close();
+          EOF
+          node /tmp/capture.mjs
+          cat video-capture/capture-receipt.txt
+
+      - name: Upload sanitized video capture artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-mesh-proof-of-action-capture
+          path: video-capture/
+          if-no-files-found: error
+          retention-days: 7

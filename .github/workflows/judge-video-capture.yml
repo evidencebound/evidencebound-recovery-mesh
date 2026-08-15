@@ -65,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p video-capture
-          cat > /tmp/capture.mjs <<'EOF'
+          cat > .judge-video-capture.mjs <<'EOF'
           import { chromium } from 'playwright';
           import fs from 'fs';
 
@@ -108,7 +108,8 @@ jobs:
 
           await browser.close();
           EOF
-          node /tmp/capture.mjs
+          node .judge-video-capture.mjs
+          rm -f .judge-video-capture.mjs
           cat video-capture/capture-receipt.txt
 
       - name: Upload sanitized video capture artifact

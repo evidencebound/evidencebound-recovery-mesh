@@ -1,0 +1,7 @@
+.node.historical-break {
+  border-color: rgba(255,107,107,.62);
+  box-shadow: 0 0 26px rgba(255,107,107,.08);
+}
+.node.historical-break::before { background: var(--invalidated); }
+.node.historical-break .kind { color: #ff9f9f; }
+.node.reused .kind { color: #8ddfbe; }

@@ -1,4 +1,4 @@
-const state = { run: null, accessRequired: false };
+const state = { run: null, accessRequired: false, pendingAutorun: null };
 const graphOrder = {
   fixture_snapshot: [1,1], history_snapshot: [1,2], policy_rules: [1,3],
   statistician: [2,1], scout: [2,3], skeptic: [3,2], orchestrator: [4,2], publish_action: [5,2]
@@ -37,7 +37,7 @@ async function request(path, opts={}) {
 }
 
 async function loadHealth() {
-  const r = await fetch('/healthz');
+  const r = await fetch('/health');
   if (!r.ok) throw new Error(`health ${r.status}`);
   const health = await r.json();
   state.accessRequired = Boolean(health.judge_access_required);
@@ -60,6 +60,22 @@ function setProofStep(key, className, meta) {
   if (!node) return;
   node.className = `proof-step ${className}`;
   node.querySelector('.proof-meta').textContent = meta;
+}
+
+function trustBreakSource(run) {
+  if (run.active_blast_radius?.invalidated_source) return run.active_blast_radius.invalidated_source;
+  return run.events.find(e => e.event_type.includes('TRUST_BREAK'))?.checkpoint_id || null;
+}
+
+function reusedCheckpointIds(run) {
+  const active = run.active_blast_radius?.reusable_checkpoints || [];
+  if (active.length) return new Set(active);
+  return new Set(
+    run.events
+      .filter(e => e.event_type.includes('REUSED'))
+      .map(e => e.checkpoint_id)
+      .filter(Boolean)
+  );
 }
 
 function renderProof(run) {
@@ -106,7 +122,7 @@ function render(run) {
   qs('#verifiedCount').textContent = c.VERIFIED;
   qs('#recomputeCount').textContent = c.RECOMPUTE + c.INVALIDATED;
   qs('#blockedCount').textContent = c.BLOCKED;
-  qs('#reusableCount').textContent = run.active_blast_radius?.reusable_checkpoints?.length || 0;
+  qs('#reusableCount').textContent = run.active_blast_radius?.reusable_checkpoints?.length || run.benchmark?.reused_agent_checkpoints || 0;
   qs('#runState').textContent = c.BLOCKED ? 'ACTION BLOCKED' : (run.benchmark ? 'RECOVERED' : 'VERIFIED BASELINE');
   qs('#runState').className = 'pill ' + (run.benchmark ? 'ok' : 'neutral');
   renderProof(run);
@@ -135,14 +151,26 @@ function render(run) {
 
 function renderGraph(run) {
   const graph = qs('#graph');
-  const reusable = new Set(run.active_blast_radius?.reusable_checkpoints || []);
+  const reusable = reusedCheckpointIds(run);
+  const breakSource = trustBreakSource(run);
   graph.innerHTML = run.checkpoints.map(cp => {
     const pos = graphOrder[cp.checkpoint_id] || [1,1];
     const deps = cp.dependencies.length ? cp.dependencies.join(' · ') : 'root';
-    return `<article id="node-${cp.checkpoint_id}" class="node ${reusable.has(cp.checkpoint_id) ? 'reused' : ''}" data-status="${cp.status}" style="grid-column:${pos[0]};grid-row:${pos[1]}">
-      <div class="kind">${cp.kind}${reusable.has(cp.checkpoint_id) ? ' · REUSED' : ''}</div>
+    const isBreak = cp.checkpoint_id === breakSource;
+    const isReused = reusable.has(cp.checkpoint_id);
+    const historicalBreak = isBreak && !run.active_blast_radius && !!run.benchmark;
+    const classes = ['node'];
+    if (isReused) classes.push('reused');
+    if (historicalBreak) classes.push('historical-break');
+    let kind = cp.kind;
+    if (isBreak) kind += ' · TRUST BREAK';
+    if (isReused) kind += ' · REUSED';
+    let status = cp.status;
+    if (historicalBreak) status = `${cp.status} · REVERIFIED`;
+    return `<article id="node-${cp.checkpoint_id}" class="${classes.join(' ')}" data-status="${cp.status}" style="grid-column:${pos[0]};grid-row:${pos[1]}">
+      <div class="kind">${kind}</div>
       <h3>${cp.checkpoint_id.replaceAll('_',' ')}</h3>
-      <div class="status">${cp.status}</div>
+      <div class="status">${status}</div>
       <div class="deps">deps: ${deps}</div>
     </article>`;
   }).join('');
@@ -189,6 +217,9 @@ function renderBenchmark(b) {
   const live = b.measurement_class.startsWith('google_adk_live');
   const modelReduction = b.model_call_reduction_ratio == null ? null : Math.round(b.model_call_reduction_ratio * 100);
   const tokenReduction = b.input_token_reduction_ratio == null ? null : Math.round(b.input_token_reduction_ratio * 100);
+  const savedInputTokens = b.full_restart_input_tokens != null && b.selective_recovery_input_tokens != null
+    ? b.full_restart_input_tokens - b.selective_recovery_input_tokens
+    : null;
   root.className='benchmark-grid';
   root.innerHTML = `
     <div class="bench"><span>Full restart agents</span><strong>${b.full_restart_agent_executions}</strong></div>
@@ -199,8 +230,12 @@ function renderBenchmark(b) {
     root.insertAdjacentHTML('beforeend', `
       <div class="bench"><span>Full restart model calls</span><strong>${b.full_restart_model_calls ?? 'n/a'}</strong></div>
       <div class="bench"><span>Selective model calls</span><strong>${b.selective_recovery_model_calls ?? 'n/a'}</strong></div>
+      <div class="bench"><span>Full restart input tokens</span><strong>${b.full_restart_input_tokens ?? 'n/a'}</strong></div>
+      <div class="bench"><span>Selective input tokens</span><strong>${b.selective_recovery_input_tokens ?? 'n/a'}</strong></div>
       <div class="bench"><span>Model-call reduction</span><strong>${modelReduction == null ? 'n/a' : modelReduction + '%'}</strong></div>
-      <div class="bench"><span>Input-token reduction</span><strong>${tokenReduction == null ? 'n/a' : tokenReduction + '%'}</strong></div>`);
+      <div class="bench"><span>Input-token reduction</span><strong>${tokenReduction == null ? 'n/a' : tokenReduction + '%'}</strong></div>
+      <div class="bench"><span>Input tokens saved</span><strong>${savedInputTokens ?? 'n/a'}</strong></div>
+      <div class="bench"><span>Measurement</span><strong>LIVE</strong></div>`);
   }
   pill.textContent=b.measurement_class.toUpperCase(); pill.className='pill ' + (live ? 'ok' : 'neutral');
   const note = live
@@ -209,7 +244,23 @@ function renderBenchmark(b) {
   root.insertAdjacentHTML('beforeend', `<p class="benchmark-empty" style="grid-column:1/-1;margin:2px 0 0">${note}</p>`);
 }
 
-qs('#saveJudgeKey').addEventListener('click', () => {
+async function runAutorun() {
+  const config = state.pendingAutorun;
+  if (!config) return;
+  if (state.accessRequired && !judgeKey()) return;
+  state.pendingAutorun = null;
+  try {
+    let run = await request('/api/runs', {method:'POST'});
+    run = await request(`/api/runs/${run.run_id}/fault/${config.scenario}`, {method:'POST'});
+    if (config.recover) run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});
+    render(run);
+  } catch (e) {
+    console.error('visual smoke harness failed', e);
+    alert(`Judge autorun failed: ${e.message}`);
+  }
+}
+
+qs('#saveJudgeKey').addEventListener('click', async () => {
   const input = qs('#judgeKey');
   const value = input.value.trim();
   if (!value) {
@@ -220,6 +271,7 @@ qs('#saveJudgeKey').addEventListener('click', () => {
   sessionStorage.setItem('recoveryMeshJudgeKey', value);
   input.value = '';
   updateAccessUi('KEY STORED');
+  await runAutorun();
 });
 qs('#judgeKey').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') qs('#saveJudgeKey').click();
@@ -239,16 +291,10 @@ window.addEventListener('resize', () => state.run && drawEdges(state.run));
   const p = new URLSearchParams(location.search);
   const scenario = p.get('autorun');
   if (!scenario) return;
+  state.pendingAutorun = {scenario, recover: p.get('recover') === '1'};
   if (state.accessRequired && !judgeKey()) {
     console.info('visual smoke harness waiting for judge access key');
     return;
   }
-  try {
-    let run = await request('/api/runs', {method:'POST'});
-    run = await request(`/api/runs/${run.run_id}/fault/${scenario}`, {method:'POST'});
-    if (p.get('recover') === '1') run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});
-    render(run);
-  } catch (e) {
-    console.error('visual smoke harness failed', e);
-  }
+  await runAutorun();
 })();

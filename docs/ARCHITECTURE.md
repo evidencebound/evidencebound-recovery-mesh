@@ -1,6 +1,6 @@
 # EvidenceBound Recovery Mesh — architecture source
 
-This document is the canonical source for the final Devpost architecture diagram. The current Google Cloud deployment has verified production receipts, so `LIVE / VERIFIED` labels refer only to the deployed Cloud Run + Google ADK + Vertex AI path demonstrated by acceptance. Enterprise persistence boxes are explicitly architectural extension points and are not presented as active integrations.
+This document is the canonical source for the final Devpost architecture diagram. `LIVE / VERIFIED` labels refer only to capabilities backed by production/control-plane receipts. The current verified Google path includes Cloud Run + Google ADK + Vertex AI + Secret Manager and a Google Agent Registry catalog/discovery entry for the Recovery Mesh fleet endpoint. Enterprise persistence boxes remain explicitly architectural extension points and are not presented as active integrations.
 
 ## Runtime architecture
 
@@ -60,6 +60,9 @@ flowchart LR
   BR -- selective recompute only --> C
   AG -- resume only after VERIFIED dependencies --> UI
 
+  AR[Google Agent Registry\nLIVE / VERIFIED\nrecovery-mesh-fleet]
+  CR -. Standard REST fleet entry point .-> AR
+
   subgraph EXT[Enterprise persistence extension · NOT ACTIVE IN LIVE DEMO]
     PA[Durable Persistence Adapter]
     FS[Firestore\ncross-session operational state]
@@ -73,9 +76,29 @@ flowchart LR
   GH[GitHub Actions · main] -. OIDC .-> WIF[Workload Identity Federation]
   WIF -. impersonates bounded deployer .-> CR
   WIF -. protected smoke only .-> SM
+  WIF -. main-only registry workflow .-> AR
 ```
 
 The Cloud Run URL remains publicly reachable for judge usability while state-changing/run APIs require the private testing key supplied through Devpost's judge-only instructions. The key is generated during first bootstrap, stored in Secret Manager, and never committed or embedded in the UI. The browser keeps an entered key only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
+
+## Verified Agent Registry boundary
+
+The existing Recovery Mesh Cloud Run endpoint is manually registered as a **Standard REST fleet entry point** in Google Agent Registry, location `global`. Registration uses the existing keyless WIF deployer identity and the stable Agent Registry REST v1 control plane. The registration workflow waits for Google's long-running operation and does not report PASS until the Registry-generated read-only `Agent` is observable and GET-verifiable.
+
+Verified receipt:
+
+```text
+Workflow: 31871557186
+AGENT_REGISTRY=PASS operation=created location=global transport=rest-v1 discovery=service-registry-resource
+AGENT_REGISTRY_SERVICE=projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet
+AGENT_REGISTRY_AGENT=projects/457699623691/locations/global/agents/agentregistry-00000000-0000-0000-a7f5-b9837959f789
+AGENT_REGISTRY_INTERFACE=https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app
+AGENT_REGISTRY_DISCOVERY=PASS
+```
+
+This is a catalog/discovery integration, not a trust-authority integration. Agent Registry cannot mark a Recovery Mesh checkpoint `VERIFIED`, calculate blast radius, override provenance/policy/integrity checks, or authorize `publish_action`.
+
+The Registry entry represents the **Recovery Mesh fleet endpoint**. The submission does not claim separate Registry entries for Statistician, Scout, Skeptic, or Orchestrator.
 
 ## Verified persistence boundary
 
@@ -205,24 +228,27 @@ Vertex location: global
 Model target: gemini-3.5-flash
 Current verified revision: evidencebound-recovery-mesh-00005-82k
 Judge secret: recovery-mesh-judge-key:1
+Agent Registry location: global
+Agent Registry Service: recovery-mesh-fleet
 ```
 
 First bootstrap creates separate identities:
 
 - `recovery-mesh-runtime`: Vertex invocation runtime + accessor only to the dedicated judge secret;
 - `recovery-mesh-build`: source-build identity;
-- `recovery-mesh-deployer`: keyless GitHub deployment identity + accessor to the dedicated judge secret only for protected deployment smoke.
+- `recovery-mesh-deployer`: keyless GitHub deployment identity + accessor to the dedicated judge secret only for protected deployment smoke; later granted the bounded `Agent Registry API Editor` role for the separate catalog-registration workflow.
 
-The bootstrap checks exact project identity, project number, hackathon label, lifecycle state, and billing before mutation. Recurring GitHub deployment is restricted by Workload Identity Federation to repository ID `1334014784`, owner `moneyparking`, and `refs/heads/main`.
+The bootstrap checks exact project identity, project number, hackathon label, lifecycle state, and billing before mutation. Recurring GitHub deployment is restricted by Workload Identity Federation to repository ID `1334014784`, owner `moneyparking`, and `refs/heads/main`. Agent Registry registration is also main-only and uses the same keyless identity without changing the Cloud Run revision.
 
 ## Evidence classes
 
 Keep these visually separate in the final diagram/demo:
 
 1. **Live production path:** Cloud Run + Google ADK + Gemini/Vertex + Secret Manager, backed by actual acceptance receipts.
-2. **Deterministic recovery authority:** Trust Graph, verification, blast radius, action gate.
-3. **Current hot state:** process-local in-memory store used by the live bounded demo.
-4. **Enterprise persistence extension:** Firestore / BigQuery / Cloud Logging adapter targets, explicitly not active in the live submission.
-5. **Synthetic fleet-scale probe:** 100 synthetic agent checkpoints; proves deterministic graph scaling and does not claim 100 Gemini calls.
+2. **Live catalog/discovery control plane:** Google Agent Registry fleet entry point, backed by workflow `31871557186` and generated read-only Agent verification.
+3. **Deterministic recovery authority:** Trust Graph, verification, blast radius, action gate.
+4. **Current hot state:** process-local in-memory store used by the live bounded demo.
+5. **Enterprise persistence extension:** Firestore / BigQuery / Cloud Logging adapter targets, explicitly not active in the live submission.
+6. **Synthetic fleet-scale probe:** 100 synthetic agent checkpoints; proves deterministic graph scaling and does not claim 100 Gemini calls.
 
-The final architecture PNG uploaded to Devpost must match this truth boundary and must not include unverified Gemini Enterprise Agent Platform add-ons as active services.
+The final architecture PNG uploaded to Devpost must match this truth boundary. It may show Agent Registry as `LIVE / VERIFIED`, but it must not show Agent Runtime, Memory Bank, Model Armor, Firestore persistence, BigQuery export, or other unverified platform services as active.

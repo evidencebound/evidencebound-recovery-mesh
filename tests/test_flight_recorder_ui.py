@@ -18,10 +18,15 @@ def test_hands_off_autorun_renders_each_live_stage_before_recovery() -> None:
     app_js = Path("static/app.js").read_text(encoding="utf-8")
     baseline_render = "render(run);\n    await holdAutorunStage('baseline');"
     incident_render = "render(run);\n    await holdAutorunStage('incident');"
-    recovery_call = "run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});"
+    recovery_call = (
+        "run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});"
+    )
     assert baseline_render in app_js
     assert incident_render in app_js
-    assert app_js.index(baseline_render) < app_js.index(incident_render) < app_js.index(recovery_call)
+    baseline_index = app_js.index(baseline_render)
+    incident_index = app_js.index(incident_render)
+    recovery_index = app_js.index(recovery_call)
+    assert baseline_index < incident_index < recovery_index
 
 
 def test_hands_off_autorun_exposes_recover_query_mode() -> None:

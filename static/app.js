@@ -6,6 +6,13 @@ const graphOrder = {
 const qs = (s) => document.querySelector(s);
 const qsa = (s) => [...document.querySelectorAll(s)];
 const judgeKey = () => sessionStorage.getItem('recoveryMeshJudgeKey') || '';
+const AUTORUN_STAGE_HOLDS_MS = {baseline: 1800, incident: 3200, recovered: 1200};
+
+async function holdAutorunStage(stage) {
+  const delayMs = AUTORUN_STAGE_HOLDS_MS[stage] || 0;
+  if (!delayMs) return;
+  await new Promise(resolve => setTimeout(resolve, delayMs));
+}
 
 function updateAccessUi(status) {
   const gate = qs('#accessGate');
@@ -251,9 +258,16 @@ async function runAutorun() {
   state.pendingAutorun = null;
   try {
     let run = await request('/api/runs', {method:'POST'});
-    run = await request(`/api/runs/${run.run_id}/fault/${config.scenario}`, {method:'POST'});
-    if (config.recover) run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});
     render(run);
+    await holdAutorunStage('baseline');
+    run = await request(`/api/runs/${run.run_id}/fault/${config.scenario}`, {method:'POST'});
+    render(run);
+    await holdAutorunStage('incident');
+    if (config.recover) {
+      run = await request(`/api/runs/${run.run_id}/recover`, {method:'POST'});
+      render(run);
+      await holdAutorunStage('recovered');
+    }
   } catch (e) {
     console.error('visual smoke harness failed', e);
     alert(`Judge autorun failed: ${e.message}`);

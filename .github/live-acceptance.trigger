@@ -1,1 +1,1 @@
-2026-08-14T19:13:00Z run protected acceptance against deployed revision
+2026-08-22T19:04+03:00 verify staged hands-off production flow

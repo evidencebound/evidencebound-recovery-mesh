@@ -1,153 +1,112 @@
-# Owner return runbook — Google Cloud production gate
+# Owner return runbook — production operations
 
-Status date: 2026-08-14.
-
-This runbook is intentionally short. Do not improvise around billing, IAM, secrets, or failed live checks.
+> **Status:** The original 2026-08-14 bootstrap checklist has been completed. This file now records the current live state and safe owner operations. It is not evidence that production is still blocked.
 
 ## Current facts
 
-- Hackathon project ID: `evidencebound-rm-c977c1`
+- Project ID: `evidencebound-rm-c977c1`
 - Project number: `457699623691`
 - Project label: `hackathon=all-things-agentic-2026`
 - Cloud Run region: `europe-west1`
 - Vertex location: `global`
-- Gemini model target: `gemini-3.5-flash`
+- Model: `gemini-3.5-flash`
+- Google ADK: `2.7.0`
+- Current Cloud Run revision: `evidencebound-recovery-mesh-00005-82k`
+- Hosted UI: `https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/`
+- Health endpoint: `/health`
+- Judge secret: `recovery-mesh-judge-key:1` in Secret Manager
+- Agent Registry Service: `recovery-mesh-fleet`
 - Public repository: `moneyparking/evidencebound-recovery-mesh`
-- Old project `vocal-lightning-7dmzd`: deletion requested; it is not a deployment target.
-- Production blocker: billing is not yet verified enabled on the isolated hackathon project.
 
-## Owner-only billing step
+The old project `vocal-lightning-7dmzd` is not a Recovery Mesh deployment target.
 
-Open the intentionally empty billing account selected for the hackathon and link only `evidencebound-rm-c977c1` to it. Do not reopen or relink the deleted legacy project.
+## Current production receipt
 
-After the account is open, verify from authenticated Cloud Shell:
-
-```bash
-gcloud config set project evidencebound-rm-c977c1
-
-gcloud billing projects link evidencebound-rm-c977c1 \
-  --billing-account=014CCF-9ABDCB-526D33
-
-gcloud billing projects describe evidencebound-rm-c977c1
-```
-
-Continue only when the receipt contains `billingEnabled: true`.
-
-## Create the project-scoped budget alert
-
-After billing is linked and before production work, create the prepared alert-only budget:
-
-```bash
-cd ~/evidencebound-recovery-mesh 2>/dev/null || true
-export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
-export RECOVERY_MESH_BILLING_ACCOUNT=014CCF-9ABDCB-526D33
-export RECOVERY_MESH_BUDGET_AMOUNT=5
-./scripts/create-project-budget-alert.sh
-```
-
-The default amount is `5` in the billing account currency, filtered only to the hackathon project, with 50%, 90%, and 100% thresholds. This is deliberately a **notification budget, not a hard spend cap**. The script is idempotent by display name and refuses to modify an existing budget automatically.
-
-## First production bootstrap
-
-Use current public `main`, not an old local copy:
-
-```bash
-set -euo pipefail
-cd ~
-rm -rf evidencebound-recovery-mesh
-git clone https://github.com/moneyparking/evidencebound-recovery-mesh.git
-cd evidencebound-recovery-mesh
-
-export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
-export GOOGLE_CLOUD_RUN_REGION=europe-west1
-export GOOGLE_CLOUD_LOCATION=global
-export RECOVERY_MESH_MODEL=gemini-3.5-flash
-export RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET=64
-
-./scripts/gcp-owner-bootstrap.sh 2>&1 | tee ~/recovery-mesh-bootstrap.log
-```
-
-The bootstrap fails closed before mutation unless all of these match the isolated project: project ID, project number, hackathon label, ACTIVE lifecycle state, and billing enabled.
-
-The bootstrap also generates the private judge access key exactly once, stores it as `recovery-mesh-judge-key:1` in Secret Manager, grants bounded access to the runtime/deployer identities, and mounts it into Cloud Run. The key value is never printed by the bootstrap.
-
-The `64` live-call value is a process-local public-demo guard, not a currency/spend limit. It fails provider calls closed after the reservation budget is exhausted and resets if Cloud Run starts a new process/revision.
-
-## Required successful core receipt
-
-Do not promote Google Cloud claims unless the live output includes all applicable evidence:
+The accepted production path has already demonstrated:
 
 ```text
-BILLING_ENABLED=true
 VERTEX_GEMINI_LIVE=PASS
 HEALTH=PASS provider=google_adk_vertex model=gemini-3.5-flash judge_access=protected
 JUDGE_API_AUTH=PASS unauthenticated_post=401
 LIVE_ADK_BASELINE=PASS agents=4
 TRUST_BREAK=PASS blocked=publish_action reused=scout
 SELECTIVE_RECOVERY=PASS rerun=3 reused=1 final_action=VERIFIED
-RUN_ID=...
-JUDGE_URL=...
-GCP_OWNER_BOOTSTRAP=PASS
-SERVICE_URL=...
-CLOUD_RUN_REVISION=...
-LIVE_MODEL_CALL_BUDGET_PER_PROCESS=64
-JUDGE_SECRET_NAME=recovery-mesh-judge-key
-JUDGE_SECRET_VERSION=1
-WORKLOAD_IDENTITY_PROVIDER=...
 ```
 
-If any command emits `BLOCKER`, `ERROR`, `PERMISSION_DENIED`, `BILLING`, `QUOTA`, or a failed assertion, stop and retain the output. Do not replace a failed Google path with deterministic output.
+Agent Registry separately demonstrated:
 
-## Retrieve the private Devpost testing key
+```text
+Workflow: 31871557186
+AGENT_REGISTRY=PASS
+AGENT_REGISTRY_DISCOVERY=PASS
+```
 
-Only after the bootstrap succeeds, retrieve the judge key locally in Cloud Shell with the command printed by the bootstrap, equivalent to:
+## Retrieve the private Devpost judge key
+
+Retrieve the value only in an authenticated owner Cloud Shell session:
 
 ```bash
 gcloud secrets versions access 1 \
   --secret=recovery-mesh-judge-key \
   --project=evidencebound-rm-c977c1
+echo
 ```
 
-Use that value only in Devpost's private judge/testing-credentials field and in the Flight Recorder's **Bounded Judge Access** box. Do not paste the key into chat, GitHub, screenshots, public project text, or the demo video.
+Use the value only in Devpost's private judge/testing field and the hosted UI's Bounded Judge Access box.
 
-The browser stores an entered key only in that tab's `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key` to protected run/action endpoints.
+Never place the value in:
 
-## Read-only Google Cloud proof receipt
+- GitHub;
+- chat transcripts;
+- screenshots;
+- public project text;
+- video;
+- URLs.
 
-After a successful bootstrap, collect a concise non-mutating receipt for the demo/submission evidence pack:
+If the key is exposed, rotate the secret and deploy a revision that mounts the intended new version before giving judges the replacement credential.
+
+## Read-only production proof
+
+From a current clone of `main`:
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
 ./scripts/gcp-proof-receipt.sh | tee ~/recovery-mesh-gcp-proof.txt
 ```
 
-It reports the exact project, project number, Cloud Run service URL/revision/runtime identity, live `/healthz`, and recent Cloud Run request metadata without printing application payloads or credentials.
+The receipt should identify the current project, service, revision, runtime identity, `/health` provider, and recent request metadata without printing application payloads or credentials.
 
-## Fortified Gate B — Agent Registry, only after core PASS
+## Deployment path
 
-Do **not** add enterprise services to rescue a failed core deployment. Once the core receipt above is green, test Google Agent Registry discovery separately:
+Normal deployments are performed keylessly through the prepared GitHub Actions Cloud Run workflow using Workload Identity Federation restricted to this repository/owner/`main` branch.
 
-```bash
-gcloud services enable agentregistry.googleapis.com --project=evidencebound-rm-c977c1
-export GOOGLE_CLOUD_PROJECT=evidencebound-rm-c977c1
-./scripts/register-agent-registry.sh
-```
+A deployment is not considered accepted merely because Cloud Run created a revision. The same live preflight and protected recovery smoke must pass before the new revision should be promoted as submission evidence.
 
-Promote Agent Registry into the architecture/Devpost story only if the script emits both a writable Service resource and a read-only discoverable Agent projection:
+## Cost posture
 
-```text
-AGENT_REGISTRY=PASS ...
-AGENT_REGISTRY_SERVICE=...
-AGENT_REGISTRY_AGENT=...
-AGENT_REGISTRY_INTERFACE=...
-```
+The judge deployment is intentionally bounded:
 
-If entitlement/API behavior blocks it, leave it out rather than fabricating a Fortified integration.
+- Cloud Run `min=0`, `max=1`;
+- one CPU and 512 MiB;
+- protected run/fault/recovery APIs;
+- bounded four-agent judge flow;
+- process-local live model-call reservation guard;
+- deterministic synthetic scale test instead of 100 paid Gemini agents.
 
-## After first bootstrap
+The live-call guard is not a financial cap. Billing credits, budget alerts, and actual usage must be monitored independently.
 
-A manual GitHub Actions workflow exists at `.github/workflows/deploy-cloud-run.yml`. After the bootstrap creates the Workload Identity Pool/provider and deployer service account, that workflow can perform keyless deployments from `main` without service-account keys. It runs the same live preflight and protected end-to-end smoke gate.
+## Agent Registry
 
-## Submission rule
+Agent Registry registration is already complete for the fleet entry point. Re-registration or updates should use the existing keyless control-plane workflow and remain idempotent.
 
-Cloud Run, Gemini, hosted URL, live benchmark values, Secret Manager runtime state, Agent Registry, and production PASS remain `PENDING` until their real receipts exist. The deterministic tests and synthetic 100-agent scale probe are separate evidence classes.
+Do not describe Registry metadata as trust authority. Recovery Mesh deterministic verification, provenance/integrity checks, blast-radius logic, and action gate remain authoritative.
+
+## Persistence limitation
+
+The live run/idempotency store remains process-local. Do not claim multi-week context, restart-surviving exactly-once behavior, Firestore persistence, Memory Bank, Agent Runtime, Model Armor, or BigQuery export unless a future integration is separately implemented and verified.
+
+## Submission-safe operating rule
+
+After the current submission is green, avoid runtime changes unless they materially improve a judging requirement and can be re-run through the complete acceptance gate.
+
+Documentation-only corrections may proceed through normal PR + CI. Any runtime change must be treated as a new production acceptance event, not as a cosmetic patch.

@@ -1,1 +1,1 @@
-2026-08-22T19:04+03:00 verify staged hands-off production flow
+2026-08-22 rerun staged hands-off acceptance after cloud-proof execution fix

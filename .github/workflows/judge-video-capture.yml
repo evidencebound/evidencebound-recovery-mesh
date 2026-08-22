@@ -60,62 +60,86 @@ jobs:
           npm install playwright@1.55.0 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Capture live Proof-of-Action states
+      - name: Capture continuous hands-off Video V2 live segment
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p video-capture
+          mkdir -p video-capture/raw-video
           cat > .judge-video-capture.mjs <<'EOF'
           import { chromium } from 'playwright';
           import fs from 'fs';
 
           const base = process.env.SERVICE_URL;
           const key = process.env.JUDGE_KEY;
+          const autorunRoute = '?autorun=stale_evidence&recover=1';
           if (!base || !key) throw new Error('missing capture inputs');
 
           const browser = await chromium.launch({headless: true});
-          const page = await browser.newPage({viewport: {width: 1920, height: 1080}, deviceScaleFactor: 1});
+          const context = await browser.newContext({
+            viewport: {width: 1920, height: 1080},
+            deviceScaleFactor: 1,
+            recordVideo: {
+              dir: 'video-capture/raw-video',
+              size: {width: 1920, height: 1080},
+            },
+          });
+          const page = await context.newPage();
+          const video = page.video();
           page.setDefaultTimeout(180000);
 
           const shot = async (name) => {
             await page.screenshot({path: `video-capture/${name}.png`, fullPage: true});
           };
 
-          await page.goto(base + '/', {waitUntil: 'networkidle'});
+          await page.goto(`${base}/${autorunRoute}`, {waitUntil: 'networkidle'});
           await page.locator('#judgeKey').fill(key);
           await page.locator('#saveJudgeKey').click();
           await page.locator('#accessState').filter({hasText: /KEY STORED/i}).waitFor();
-          await page.locator('#startRun').click();
+
+          // From this point onward the browser does not click Start, Fault, or Recover.
+          // The deployed staged autorun drives the real production APIs itself.
           await page.locator('#momentTitle').filter({hasText: /VERIFIED FLEET BASELINE/i}).waitFor();
           await shot('01-live-baseline');
           await page.locator('#proofStrip').screenshot({path: 'video-capture/01b-proof-strip-baseline.png'});
 
-          await page.locator('button[data-fault="stale_evidence"]').click();
           await page.locator('#momentTitle').filter({hasText: /TRUST BREAK DETECTED/i}).waitFor();
           await shot('02-trust-break-blocked');
           await page.locator('#graphWrap').screenshot({path: 'video-capture/02b-trust-graph.png'});
           await page.locator('#proofStrip').screenshot({path: 'video-capture/02c-proof-strip-break.png'});
 
-          await page.locator('#recover').click();
           await page.locator('#momentTitle').filter({hasText: /SELECTIVE RECOVERY VERIFIED/i}).waitFor();
           await shot('03-verified-recovery');
-          await page.locator('.benchmark-panel').screenshot({path: 'video-capture/03b-benchmark.png'});
           await page.locator('#proofStrip').screenshot({path: 'video-capture/03c-proof-strip-recovered.png'});
+
+          // After recovery is already VERIFIED, reveal the measured receipt in the same recording.
+          await page.locator('.benchmark-panel').scrollIntoViewIfNeeded();
+          await page.waitForTimeout(1500);
+          await page.locator('.benchmark-panel').screenshot({path: 'video-capture/03b-benchmark.png'});
 
           const provider = (await page.locator('#executionProvider').innerText()).trim();
           const runId = (await page.locator('#runId').innerText()).trim();
-          fs.writeFileSync('video-capture/capture-receipt.txt', `CAPTURE=PASS\nPROVIDER=${provider}\nRUN_ID=${runId}\n`);
+          const finalMoment = (await page.locator('#momentTitle').innerText()).trim();
+          const benchmark = (await page.locator('#benchmark').innerText()).trim().replaceAll('\n', ' | ');
+          fs.writeFileSync(
+            'video-capture/capture-receipt.txt',
+            `CAPTURE=PASS\nMODE=HANDS_OFF_STAGED_AUTORUN\nROUTE=${autorunRoute}\nPROVIDER=${provider}\nRUN_ID=${runId}\nFINAL_MOMENT=${finalMoment}\nBENCHMARK=${benchmark}\n`,
+          );
 
+          await context.close();
+          if (!video) throw new Error('Playwright video handle unavailable');
+          await video.saveAs('video-capture/video-v2-live-segment.webm');
+          fs.rmSync('video-capture/raw-video', {recursive: true, force: true});
           await browser.close();
           EOF
           node .judge-video-capture.mjs
           rm -f .judge-video-capture.mjs
+          test -s video-capture/video-v2-live-segment.webm
           cat video-capture/capture-receipt.txt
 
-      - name: Upload sanitized video capture artifact
+      - name: Upload sanitized Video V2 capture artifact
         uses: actions/upload-artifact@v4
         with:
-          name: recovery-mesh-proof-of-action-capture
+          name: recovery-mesh-video-v2-live-capture
           path: video-capture/
           if-no-files-found: error
           retention-days: 7

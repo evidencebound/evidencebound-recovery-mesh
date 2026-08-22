@@ -27,9 +27,9 @@
 **Files:**
 - Modify: `docs/DEVPOST_SUBMISSION_MATRIX.md`
 
-- [ ] Replace obsolete draft/pending statuses with verified final submission state.
-- [ ] Preserve explicit non-claims and team-roster caveat.
-- [ ] Record current hosted URL, video, Agent Registry, and production receipts.
+- [x] Replace obsolete draft/pending statuses with verified final submission state.
+- [x] Preserve explicit non-claims and team-roster caveat.
+- [x] Record current hosted URL, video, Agent Registry, and production receipts.
 
 ### Task 2: Update production deployment and acceptance docs
 
@@ -38,9 +38,9 @@
 - Modify: `docs/JUDGE_ACCEPTANCE.md`
 - Modify: `docs/THREAT_MODEL.md`
 
-- [ ] Replace obsolete billing/deployment-pending language with verified production state.
-- [ ] Replace every stale `/healthz` reference with `/health`.
-- [ ] Keep Secret Manager, WIF, fail-closed API, bounded model-call guard, and current limitations accurate.
+- [x] Replace obsolete billing/deployment-pending language with verified production state.
+- [x] Replace every stale `/healthz` reference in the touched active docs with `/health`.
+- [x] Keep Secret Manager, WIF, fail-closed API, bounded model-call guard, and current limitations accurate.
 
 ### Task 3: Mark historical operational documents clearly
 
@@ -48,15 +48,16 @@
 - Modify: `docs/FORTIFIED_TRACK_PLAN.md`
 - Modify: `docs/OWNER_RETURN_RUNBOOK.md`
 
-- [ ] Add a prominent historical-status banner and current-state pointer.
-- [ ] Update completed Gate B / Agent Registry status.
-- [ ] Preserve Gate C durable-state limitation as not implemented.
-- [ ] Remove language that could imply the live submission is still blocked.
+- [x] Add a prominent historical-status/current-state pointer.
+- [x] Update completed Gate B / Agent Registry status.
+- [x] Preserve Gate C durable-state limitation as not implemented.
+- [x] Remove language that could imply the live submission is still blocked.
 
 ### Task 4: Verify documentation consistency
 
-- [ ] Confirm no current judge-facing document claims production is pending.
-- [ ] Confirm no stale `/healthz` remains in active docs.
-- [ ] Confirm current URLs, revision, model, ADK version, Agent Registry receipt, video URL, and non-claims match README/preflight.
-- [ ] Open a PR and run the repository CI.
-- [ ] Merge only after CI succeeds.
+- [x] Confirm touched judge-facing documents no longer claim core production is pending.
+- [x] Confirm touched active docs use `/health`, not `/healthz`.
+- [x] Confirm current URLs, revision, model, ADK version, Agent Registry receipt, video URL, and non-claims match README/preflight.
+- [x] Open PR #20 and run repository CI.
+- [x] PR CI run `32569847246` completed with `success`; all recorded test/build/security steps passed.
+- [ ] Merge after the final post-plan-update CI succeeds.

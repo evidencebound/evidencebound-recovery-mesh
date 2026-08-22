@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  statuses: write
 
 env:
   GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
@@ -39,6 +40,7 @@ jobs:
           project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
 
       - name: Run protected judge acceptance against current revision
+        id: acceptance
         shell: bash
         run: |
           set -euo pipefail
@@ -52,6 +54,17 @@ jobs:
             --format='value(status.latestReadyRevisionName)')"
           printf 'LIVE_ACCEPTANCE_SERVICE_URL=%s\n' "$SERVICE_URL"
           printf 'LIVE_ACCEPTANCE_REVISION=%s\n' "$REVISION"
+          printf 'revision=%s\n' "$REVISION" >> "$GITHUB_OUTPUT"
+
+          curl --fail --silent --show-error --location \
+            "$SERVICE_URL/static/app.js" \
+            --output /tmp/live-app.js
+          grep -Fq 'AUTORUN_STAGE_HOLDS_MS' /tmp/live-app.js
+          grep -Fq "await holdAutorunStage('baseline')" /tmp/live-app.js
+          grep -Fq "await holdAutorunStage('incident')" /tmp/live-app.js
+          grep -Fq "await holdAutorunStage('recovered')" /tmp/live-app.js
+          grep -Fq "p.get('recover') === '1'" /tmp/live-app.js
+          printf 'HANDS_OFF_STAGED_UI=PASS revision=%s route=?autorun=stale_evidence&recover=1\n' "$REVISION"
 
           export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(gcloud secrets versions access 1 \
             --secret recovery-mesh-judge-key \
@@ -66,6 +79,47 @@ jobs:
           printf 'LIVE_JUDGE_ACCEPTANCE=PASS\n'
           printf 'CLOUD_RUN_MUTATIONS=NONE\n'
           printf 'BUILD_OR_DEPLOY=NONE\n'
+
+      - name: Publish machine-readable live acceptance status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          ACCEPTANCE_REVISION: ${{ steps.acceptance.outputs.revision }}
+        run: |
+          set -euo pipefail
+          TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$ACCEPTANCE_OUTCOME" = "success" ]; then
+            STATE=success
+            DESCRIPTION="Cloud Run staged autorun + protected judge smoke PASS"
+          else
+            STATE=failure
+            DESCRIPTION="Cloud Run staged autorun or protected judge smoke FAILED"
+          fi
+          python - "$STATE" "$DESCRIPTION" "$TARGET_URL" <<'PY' > /tmp/live-acceptance-status.json
+          import json
+          import sys
+
+          state, description, target_url = sys.argv[1:]
+          print(json.dumps({
+              "state": state,
+              "context": "recovery-mesh/live-acceptance",
+              "description": description,
+              "target_url": target_url,
+          }))
+          PY
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data-binary @/tmp/live-acceptance-status.json \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            >/dev/null
+          printf 'LIVE_ACCEPTANCE_STATUS=%s context=recovery-mesh/live-acceptance revision=%s\n' \
+            "$STATE" "${ACCEPTANCE_REVISION:-unknown}"
+          printf 'LIVE_ACCEPTANCE_ACTIONS_RUN=%s\n' "$TARGET_URL"
 
   cloud-proof:
     needs: live-judge-flow

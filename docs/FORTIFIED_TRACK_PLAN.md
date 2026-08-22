@@ -1,91 +1,102 @@
-# Fortified Enterprise Fleet — current-track plan
+# Fortified Enterprise Fleet — plan and current scorecard
 
-Status date: 2026-08-14. This document separates current official track expectations from verified implementation evidence. It is a plan, not a claim that enterprise-agent services are live.
+> **Status:** This document began as the 2026-08-14 implementation plan. It is retained for design rationale, but the current submission state is summarized below. For judge-facing production facts, prefer `README.md`, `docs/JUDGE_TESTING_INSTRUCTIONS.md`, `docs/PROOF_OF_ACTION_VIDEO.md`, and `docs/SUBMISSION_PREFLIGHT_2026-08-15.md`.
 
-## Why this exists
+Recovery Mesh is the fleet-integrity and selective-recovery plane: a deterministic trust graph surrounds a four-role Google ADK/Gemini agent fleet and prevents one broken checkpoint from forcing a blind whole-fleet restart.
 
-The current All Things Agentic Fortified Enterprise Fleet description expects more than a secure single agent. It emphasizes a centrally governed institutional fleet: discoverability/cataloging, persistent context across asynchronous work, secure runtime identity and access, observability, and safe interaction with production data.
+## Current Fortified scorecard
 
-Recovery Mesh already supplies the deterministic trust/recovery layer. The Google enterprise services below are considered only where they materially strengthen the judge proof; none is claimed until a real invocation/resource receipt exists.
+| Fortified concern | Current Recovery Mesh evidence | Status |
+|---|---|---|
+| Multi-agent orchestration | four separated ADK roles + deterministic dependency graph | LIVE / VERIFIED |
+| Corporate discovery/catalog | Google Agent Registry Service + generated read-only Agent | LIVE / VERIFIED |
+| Runtime security | Cloud Run identities, protected judge API, Secret Manager, WIF | LIVE / VERIFIED |
+| Failure containment | exact DAG blast radius + fail-closed `publish_action` | LIVE / VERIFIED |
+| Selective recovery | 3 affected agents rerun, Scout reused | LIVE / VERIFIED |
+| Auditability | Flight Recorder causal events + historical break/reuse markers | LIVE / VERIFIED |
+| Scale behavior | deterministic 100-checkpoint probe: 14 affected / 86 reused / 1 blocked | VERIFIED SYNTHETIC GRAPH PROBE |
+| Long-term cross-session state | current run store is process-local | NOT CLAIMED |
+| Multi-week asynchronous context | not demonstrated by current runtime | NOT CLAIMED |
+| Enterprise production data | bounded controlled fixtures only | NOT CLAIMED AS LIVE ENTERPRISE DATA |
+| Agent Runtime / Memory Bank / Model Armor / Gateway / Identity | no separately verified integration | NOT CLAIMED |
 
-## Phase ordering
+## Gate A — core production proof — COMPLETE
 
-### Gate A — core production proof (must pass first)
+The original plan required the core Google production path to pass before any enterprise add-on could be promoted.
 
-1. isolated hackathon project billing enabled;
-2. live Gemini 3.5+ preflight;
-3. Google ADK four-role baseline;
-4. Cloud Run deployment with bounded runtime/build identities;
-5. Secret Manager protected judge API;
-6. exact trust-break / blast-radius / blocked-action / selective-recovery smoke;
-7. Cloud Run proof receipt.
-
-A failure at Gate A blocks every later enterprise add-on. Do not mask it by adding more services.
-
-### Gate B — Agent Registry discovery (prepared, not live)
-
-After Gate A succeeds, enable and test Agent Registry. `scripts/register-agent-registry.sh` is prepared to manually register the Cloud Run Recovery Mesh fleet controller as a **standard REST agent** in `global` and then wait for the read-only discoverable Agent projection.
-
-Why this is material:
-
-- gives the fleet a Google-managed discovery/catalog entry rather than only a README/UI catalog;
-- creates a concrete cross-department discovery proof for the Fortified track;
-- preserves the current Cloud Run architecture instead of forcing an unverified runtime migration;
-- does not misrepresent the four internal worker roles as separately network-addressable agents.
-
-Required live receipt before claiming it:
+Current evidence:
 
 ```text
-AGENT_REGISTRY=PASS ...
-AGENT_REGISTRY_SERVICE=...
-AGENT_REGISTRY_AGENT=...
-AGENT_REGISTRY_INTERFACE=https://...
+Cloud Run revision: evidencebound-recovery-mesh-00005-82k
+Provider: google_adk_vertex
+Model: gemini-3.5-flash
+Google ADK: 2.7.0
+Protected API: unauthenticated POST /api/runs -> 401
+Live baseline: 4 agents
+Trust break: history_snapshot
+Blocked action: publish_action
+Reused work: scout
+Selective recovery: 3 rerun / 1 reused
+Final action: VERIFIED
 ```
 
-The script intentionally fails if it observes only the writable Service but not the read-only Agent projection.
+## Gate B — Google Agent Registry — COMPLETE
 
-### Gate C — durable cross-session trust state (decision after Gate A)
+The fleet entry point is registered as a standard REST service and the Google-generated read-only Agent projection was observed before PASS:
 
-Current demo runs are process-local. That is sufficient for the causal vertical slice but is not yet evidence of context surviving weeks of asynchronous institutional work.
+```text
+Workflow: 31871557186
+AGENT_REGISTRY=PASS
+AGENT_REGISTRY_SERVICE=projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet
+AGENT_REGISTRY_AGENT=projects/457699623691/locations/global/agents/agentregistry-00000000-0000-0000-a7f5-b9837959f789
+AGENT_REGISTRY_INTERFACE=https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app
+AGENT_REGISTRY_DISCOVERY=PASS
+```
 
-After Gate A, choose the smallest durable implementation that preserves EvidenceBound semantics:
+This is catalog/discovery evidence only. The Registry does not authorize Recovery Mesh trust state and the four internal ADK roles are not claimed as separately registered agents.
 
-- preferred trust ledger: Firestore or another Google Cloud durable store for checkpoint/event snapshots;
-- persisted data is always revalidated on read; storage existence never implies `VERIFIED`;
-- retain original failure/invalidation history instead of overwriting it;
-- idempotency keys must survive process restart before claiming durable exactly-once behavior.
+## Gate C — durable cross-session trust state — NOT IMPLEMENTED
 
-Do not call Memory Bank an immutable or authoritative trust ledger. If Memory Bank entitlement is available, it can be evaluated only as advisory long-term agent context while deterministic checkpoint trust remains EvidenceBound-owned.
+The current demo runs are process-local. That proves the causal recovery vertical slice but does not prove context surviving weeks of asynchronous institutional work.
 
-### Gate D — optional Gemini Enterprise Agent Platform services
+Any future durable implementation must preserve these constraints:
 
-Inspect actual entitlement and runtime behavior only after Gate A. Candidate services:
+- storage existence never implies `VERIFIED`;
+- persisted records are revalidated on read;
+- original failure/invalidation history is retained rather than overwritten;
+- restart-surviving idempotency must be verified before any durable exactly-once claim;
+- Memory Bank, if evaluated later, is advisory context rather than immutable trust authority.
 
-- Agent Runtime: only if moving a worker or orchestration boundary there materially improves the judge proof without destabilizing Cloud Run;
-- Memory Bank: advisory contextual memory only, never automatic trusted memory;
-- Agent Identity / Agent Gateway: only if a real cross-agent/resource authorization path exists;
-- Agent Observability: only if actual traces/logs improve the Flight Recorder proof;
-- Model Armor: only for documented/observed supported security behavior, never described as a generic policy-drift detector.
+Firestore or another durable Google Cloud store remains a possible extension target, not an active submission integration.
 
-No service enters the architecture diagram merely because it is recommended by the track.
+## Gate D — optional Gemini Enterprise Agent Platform services — NOT CLAIMED
 
-## Judge mapping
+Agent Runtime, Memory Bank, Agent Identity, Agent Gateway, Model Armor, and enterprise Agent Observability are not promoted into the live architecture without a real resource/invocation receipt.
 
-| Fortified concern | Recovery Mesh evidence | Google-managed evidence target |
-|---|---|---|
-| Multi-agent fleet | four separated ADK roles + deterministic dependency graph | live ADK receipts |
-| Central catalog | role catalog in workload/Flight Recorder | Agent Registry discoverable fleet entry |
-| Runtime security | fail-closed judge API, secret-backed key, model-call guard | Cloud Run runtime identity + Secret Manager |
-| Blast-radius containment | exact DAG descendants + reusable set | live production run/log receipt |
-| Persistent context | checkpoint schema/version/provenance semantics | durable store only after Gate A |
-| Asynchronous recovery | deterministic recompute plan/idempotency | durable state/long-running service only if verified |
-| Observability | Flight Recorder causal events | Cloud Run logs; enterprise observability only if actually integrated |
-| Cross-department governance | deterministic policy/provenance gates | Registry discovery + IAM evidence |
+That constraint is deliberate. Recovery Mesh must not describe a Google service as detecting policy drift, prompt poisoning, or trust failure unless that service actually produced the corresponding result.
 
-## Non-claims until proven
+## Architectural thesis
 
-- no Agent Registry PASS until the real projected Agent exists;
-- no Agent Runtime or Memory Bank usage until a real resource/invocation exists;
-- no weeks-long persistence claim while the runtime remains process-local;
-- no durable exactly-once claim while the idempotency ledger remains process-local;
-- no enterprise security service credit for behavior implemented solely by EvidenceBound.
+The important separation remains:
+
+```text
+Gemini / ADK reasoning
+        ↓ advisory bounded output
+Deterministic checkpoint verification
+        ↓
+Trust Graph + exact blast radius
+        ↓
+Fail-closed action gate
+        ↓
+Selective recomputation
+        ↓
+Re-verification before resume
+```
+
+Persisted memory, Agent Registry metadata, or model assertions cannot override this authority chain.
+
+## Current judge positioning
+
+Recovery Mesh strongly demonstrates discovery, multi-agent orchestration, observability of causal recovery, security posture, fail-closed action, and selective self-healing. The submission explicitly discloses that it does **not** demonstrate durable multi-week context or live enterprise production-data integration.
+
+This honest boundary should remain visible unless a future implementation is separately built, tested, deployed, and verified before the submission deadline.

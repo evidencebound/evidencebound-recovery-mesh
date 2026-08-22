@@ -139,4 +139,4 @@ jobs:
           project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
 
       - name: Capture Google Cloud proof receipt
-        run: ./scripts/gcp-proof-receipt.sh
+        run: bash ./scripts/gcp-proof-receipt.sh

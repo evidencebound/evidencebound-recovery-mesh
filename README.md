@@ -174,7 +174,7 @@ The Recovery Mesh computes the rerun plan. The judge does not choose which agent
 Requirements: Python 3.12+.
 
 ```bash
-git clone https://github.com/moneyparking/evidencebound-recovery-mesh.git
+git clone https://github.com/evidencebound/evidencebound-recovery-mesh.git
 cd evidencebound-recovery-mesh
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate

@@ -25,6 +25,9 @@ env:
 jobs:
   live-judge-flow:
     runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.acceptance.outputs.run_id }}
+      revision: ${{ steps.acceptance.outputs.revision }}
     steps:
       - uses: actions/checkout@v7
 
@@ -59,12 +62,17 @@ jobs:
           curl --fail --silent --show-error --location \
             "$SERVICE_URL/static/app.js" \
             --output /tmp/live-app.js
+          curl --fail --silent --show-error --location \
+            "$SERVICE_URL/static/durable.js" \
+            --output /tmp/live-durable.js
           grep -Fq 'AUTORUN_STAGE_HOLDS_MS' /tmp/live-app.js
           grep -Fq "await holdAutorunStage('baseline')" /tmp/live-app.js
           grep -Fq "await holdAutorunStage('incident')" /tmp/live-app.js
           grep -Fq "await holdAutorunStage('recovered')" /tmp/live-app.js
           grep -Fq "p.get('recover') === '1'" /tmp/live-app.js
-          printf 'HANDS_OFF_STAGED_UI=PASS revision=%s route=?autorun=stale_evidence&recover=1\n' "$REVISION"
+          grep -Fq 'ACTION BLOCKED · NO RECEIPT' /tmp/live-durable.js
+          grep -Fq 'REHYDRATED · TRUST VALIDATED' /tmp/live-durable.js
+          printf 'HANDS_OFF_STAGED_UI=PASS revision=%s route=?autorun=stale_evidence&recover=1 durable_ledger=present\n' "$REVISION"
 
           export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(gcloud secrets versions access 1 \
             --secret recovery-mesh-judge-key \
@@ -74,7 +82,14 @@ jobs:
             exit 4
           }
           echo "::add-mask::${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE}"
-          ./scripts/smoke-cloud-run.sh "$SERVICE_URL"
+          ./scripts/smoke-cloud-run.sh "$SERVICE_URL" | tee /tmp/recovery-mesh-live-smoke.txt
+          RUN_ID="$(sed -n 's/^RUN_ID=//p' /tmp/recovery-mesh-live-smoke.txt | tail -n1)"
+          [ -n "$RUN_ID" ] || {
+            echo 'BLOCKER=live smoke did not return RUN_ID' >&2
+            exit 5
+          }
+          printf 'run_id=%s\n' "$RUN_ID" >> "$GITHUB_OUTPUT"
+          printf 'LIVE_ACCEPTANCE_RUN_ID=%s\n' "$RUN_ID"
           unset RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE
           printf 'LIVE_JUDGE_ACCEPTANCE=PASS\n'
           printf 'CLOUD_RUN_MUTATIONS=NONE\n'
@@ -92,10 +107,10 @@ jobs:
           TARGET_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "$ACCEPTANCE_OUTCOME" = "success" ]; then
             STATE=success
-            DESCRIPTION="Cloud Run staged autorun + protected judge smoke PASS"
+            DESCRIPTION="Cloud Run durable staged autorun + protected judge smoke PASS"
           else
             STATE=failure
-            DESCRIPTION="Cloud Run staged autorun or protected judge smoke FAILED"
+            DESCRIPTION="Cloud Run durable staged autorun or protected judge smoke FAILED"
           fi
           python - "$STATE" "$DESCRIPTION" "$TARGET_URL" <<'PY' > /tmp/live-acceptance-status.json
           import json
@@ -124,6 +139,8 @@ jobs:
   cloud-proof:
     needs: live-judge-flow
     runs-on: ubuntu-latest
+    env:
+      RECOVERY_MESH_PROOF_RUN_ID: ${{ needs.live-judge-flow.outputs.run_id }}
     steps:
       - uses: actions/checkout@v7
 
@@ -138,5 +155,5 @@ jobs:
         with:
           project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
 
-      - name: Capture Google Cloud proof receipt
+      - name: Capture exact-run Google Cloud proof receipt
         run: bash ./scripts/gcp-proof-receipt.sh

@@ -1,1 +1,1 @@
-2026-08-25 post-transfer live acceptance for evidencebound organization
+2026-08-28 Fortified Durable Trust Ledger exact-run acceptance on Cloud Run revision 00007-bjm

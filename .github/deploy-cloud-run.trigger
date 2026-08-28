@@ -1,1 +1,1 @@
-2026-08-22T16:53+03:00 deploy staged hands-off Proof-of-Action autorun
+2026-08-28T20:17+03:00 deploy Fortified Durable Trust Ledger production revision

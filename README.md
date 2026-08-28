@@ -2,6 +2,8 @@
 
 [![Cloud Run](https://img.shields.io/badge/Cloud%20Run-PASS-2ea44f)](https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/)
 ![Live Acceptance](https://img.shields.io/badge/Live%20Acceptance-PASS-2ea44f)
+![Firestore](https://img.shields.io/badge/Firestore-Durable%20Ledger-4285F4)
+![Cloud Logging](https://img.shields.io/badge/Cloud%20Logging-Exact--Run%20PASS-4285F4)
 ![Agent Registry](https://img.shields.io/badge/Agent%20Registry-PASS-2ea44f)
 ![Vertex AI](https://img.shields.io/badge/Vertex%20AI-Gemini%203.5%20Flash-4285F4)
 ![Google ADK](https://img.shields.io/badge/Google%20ADK-2.7.0-4285F4)
@@ -14,74 +16,94 @@ When one evidence or agent checkpoint becomes untrustworthy, Recovery Mesh does 
 
 ```text
 TRUST BREAK
-  -> BLAST RADIUS
+  -> EXACT BLAST RADIUS
   -> ACTION BLOCKED
   -> SAFE WORK REUSED
   -> AFFECTED BRANCH RECOMPUTED
   -> VERIFIED RECOVERY
 ```
 
-The Flight Recorder renders this sequence from real runtime state. Gemini can reason and produce bounded structured output, but it cannot mark checkpoints VERIFIED, choose the blast radius, override provenance/policy checks, or authorize the final action.
+Gemini can reason and produce bounded structured output, but it cannot mark checkpoints `VERIFIED`, choose the blast radius, override provenance/integrity/policy checks, trust persisted state merely because it exists, or authorize the final action.
 
-## Current production deployment — 2026-08-28
+## Current fortified production deployment — 2026-08-28
 
-| Gate | Receipt |
+| Gate | Current receipt |
 |---|---|
 | Cloud Run | `PASS` |
-| Current revision | `evidencebound-recovery-mesh-00006-tc4` |
-| Live acceptance workflow | `32817763402` |
+| Revision | `evidencebound-recovery-mesh-00007-bjm` |
+| Deployment workflow | `33196157041` — SUCCESS |
+| Fresh live acceptance + cloud proof | `33196523402` — SUCCESS |
+| Acceptance run | `run-4f1eba151be7` |
 | Vertex AI | `gemini-3.5-flash` |
 | Google agent framework | ADK `2.7.0` |
-| Google Agent Registry | `PASS` — fleet entry point registered + read-only Agent discovery verified |
-| Agent Registry Service | `projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet` |
-| Agent Registry workflow | `31871557186` |
-| Protected judge API | unauthenticated `POST /api/runs` -> `401` |
+| Persistence | Firestore Durable Trust Ledger, `durable=true` |
+| Firestore database | `(default)`, `europe-west1` |
+| Exact-run Cloud Logging | `PASS` |
+| Protected judge API | unauthenticated `POST /api/runs -> 401` |
 | Live baseline | `4` Google ADK agents |
-| Controlled trust break | `PASS` |
+| Controlled trust break | `history_snapshot / STALE_EVIDENCE` |
 | Unsafe action | `publish_action = BLOCKED` |
-| Reused work | `scout` preserved |
-| Selective recovery | `3` agents rerun, `1` agent reused |
+| Blocked durable receipt count | `0` |
+| Safe work reused | `Scout` |
+| Selective recovery | `3` agents rerun / `1` reused |
+| Recovered durable receipt count | `1` |
+| Rehydration | trusted only after deterministic validation |
 | Final action | `VERIFIED` |
-| Current acceptance run | `run-6d1427ccb2ca` |
+| Google Agent Registry | fleet entry point registered and discoverable |
 
-The current production acceptance measured:
-
-```text
-Full restart:        4 model calls / 1739 input tokens
-Selective recovery: 3 model calls / 1388 input tokens
-Saved:               1 model call / 351 input tokens (~20%)
-```
-
-This is a controlled-run measurement for `run-6d1427ccb2ca`, not a general savings claim. Token counts vary across live Gemini executions; the Flight Recorder therefore displays each run's actual receipt rather than a hard-coded percentage.
-
-### Video V2 continuous-capture receipt
-
-The Video V2 hands-off capture is a separate live run and is intentionally kept distinct from the newer production acceptance above:
+Measured values for `run-4f1eba151be7` only:
 
 ```text
-Capture run:         run-06fdaf68fdff
-Full restart:        4 model calls / 1744 input tokens
-Selective recovery: 3 model calls / 1366 input tokens
-Saved:               1 model call / 378 input tokens (~22%)
-Capture mode:        HANDS_OFF_STAGED_AUTORUN
-Route:               ?autorun=stale_evidence&recover=1
+Full restart:        4 model calls / 1707 input tokens
+Selective recovery: 3 model calls / 1432 input tokens
+Saved in this run:   1 model call / 275 input tokens (~16.1%)
 ```
 
-The captured live segment is one continuous 24.08-second execution. It shows the same production contracts: verified baseline, controlled trust break, exact blast radius, blocked action, unaffected Scout reuse, affected-branch recomputation, and verified recovery.
+This is a controlled-run measurement, not a general savings claim. Gemini token usage varies between executions, so the Flight Recorder displays the current run's actual receipt.
 
-### Verified Agent Registry receipt
+Canonical production receipt: [`docs/FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md`](docs/FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md).
 
-Recovery Mesh is manually registered in **Google Agent Registry** as the discoverable fleet entry point for the existing Cloud Run service. Registration is control-plane only: it did not change the Recovery Mesh backend, Cloud Run revision, judge API, runtime behavior, Gemini model configuration, or internal Trust Graph semantics.
+## Durable Trust Ledger
+
+The current revision uses Firestore as an active production persistence layer for run snapshots, Flight Recorder events and idempotent action receipts.
+
+The live acceptance proved the fail-closed receipt invariant:
 
 ```text
-AGENT_REGISTRY=PASS operation=created location=global transport=rest-v1 discovery=service-registry-resource
-AGENT_REGISTRY_SERVICE=projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet
-AGENT_REGISTRY_AGENT=projects/457699623691/locations/global/agents/agentregistry-00000000-0000-0000-a7f5-b9837959f789
-AGENT_REGISTRY_INTERFACE=https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app
-AGENT_REGISTRY_DISCOVERY=PASS
+FIRESTORE_BLOCKED_RECEIPT_COUNT=PASS count=0 run_id=run-4f1eba151be7
+DURABLE_BLOCKED=PASS action=BLOCKED receipt=absent persisted_trust=validated
+DURABLE_RECOVERY=PASS receipt=present rehydration=trusted
+FIRESTORE_RECOVERED_RECEIPT_COUNT=PASS count=1 run_id=run-4f1eba151be7
 ```
 
-The Registry entry represents the **Recovery Mesh fleet entry point**. This submission does not claim that each of the four internal ADK roles is separately registered.
+Persisted state is **not automatically trusted memory**. Recovery Mesh revalidates dependency/input digests, provenance, integrity and active policy before persisted checkpoints may be reused.
+
+The exact production acceptance did not deliberately kill a Cloud Run instance between persistence and replay. Repository tests cover crash/restart semantics; the live receipt proves the active Firestore data path, durable receipt cardinality and deterministic rehydration gate on revision `00007-bjm`.
+
+## Exact-run Google Cloud audit proof
+
+Workflow `33196523402` uses a separate read-only auditor identity for the second job. It queried Google Cloud Logging for the same acceptance run generated by the live judge job:
+
+```text
+PROOF_RUN_ID=run-4f1eba151be7
+EXACT_RUN_CLOUD_LOGGING=PASS
+GCP_PROOF_RECEIPT=PASS
+```
+
+The observed production causal sequence includes:
+
+```text
+TRUST_BREAK_DETECTED
+BLAST_RADIUS_COMPUTED
+ACTION_BLOCKED
+CHECKPOINT_REUSED
+RECOMPUTE_STARTED
+CHECKPOINT_REVERIFIED
+ACTION_RESUMED
+RECOVERY_COMPLETED
+```
+
+Cloud Logging provides external audit evidence. It does not participate in trust authorization.
 
 ## Live judge UI
 
@@ -91,7 +113,7 @@ Hosted Flight Recorder:
 https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/
 ```
 
-Fastest judge path — hands-off Proof of Action:
+Preferred hands-off Proof-of-Action route:
 
 ```text
 https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evidence&recover=1
@@ -99,7 +121,7 @@ https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evide
 
 The action APIs are protected. Enter the private testing key supplied in the Devpost judge-only instructions. The browser keeps it only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
 
-After unlock, **no human recovery action is required**. The hands-off route creates a fresh live Google ADK / Gemini baseline, injects the controlled stale-evidence fault through the same production API, freezes the unsafe action, computes the exact repair set, and calls selective recovery automatically. The graph visibly progresses through `history_snapshot · TRUST BREAK`, the contaminated branch, `publish_action = BLOCKED`, `scout · REUSED`, affected-branch recomputation, and final `VERIFIED` recovery.
+After unlock, no human recovery action is required. The app creates a fresh Google ADK / Gemini baseline, injects the controlled stale-evidence fault through the production API, freezes the unsafe action, computes the exact repair set, reuses still-verifiable work, selectively recomputes the contaminated branch, persists the recovery ledger, and resumes only after deterministic re-verification.
 
 Manual inspection route:
 
@@ -107,18 +129,16 @@ Manual inspection route:
 https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evidence
 ```
 
-The manual route intentionally pauses in the blocked incident state so a judge can inspect the blast radius before clicking **3 · Autonomous selective recovery**. The hands-off route is the preferred autonomy proof because the operator neither selects the repair set nor triggers recovery after the fault is introduced.
+The manual route intentionally pauses in the incident state so judges can inspect the blast radius before clicking **3 · Autonomous selective recovery**.
 
-Historical production run IDs above are audit receipts, but run objects are intentionally process-local in this bounded demo. They are **not** presented as durable permalinks after Cloud Run scales to zero. Judges should use the fresh hands-off route above for reproducible live verification.
-
-Detailed judge steps: [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md).
+Detailed steps: [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  J[Judge / Operator] --> UI[Flight Recorder UI]
-  J --> K[Protected Judge API Gate]
+  J[Judge] --> UI[Flight Recorder UI]
+  J --> K[Protected Judge API]
   SM[Secret Manager] -. judge key .-> K
   UI --> K
   K --> M[Recovery Mesh Controller]
@@ -142,21 +162,19 @@ flowchart LR
   B --> X[Fail-Closed Action Gate]
   B --> R[Selective Recompute]
   R --> M
-  X --> F[Flight Recorder]
-  G --> F
-  F --> CR[Cloud Run]
-  CR -. control-plane registration .-> AR[Google Agent Registry · LIVE / VERIFIED]
+
+  G --> F[Flight Recorder]
+  X --> F
+  M --> D[Durable Trust Ledger]
+  F --> D
+  D --> FS[Firestore · LIVE / VERIFIED]
+  F --> CL[Cloud Logging · EXACT-RUN VERIFIED]
+
+  M --> CR[Cloud Run]
+  CR -. fleet catalog/discovery .-> AR[Google Agent Registry]
 ```
 
-Canonical architecture notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-### Enterprise persistence boundary — verified submission scope
-
-The live judge deployment validates the Recovery Mesh recovery control plane with a **process-local in-memory hot store**. That is the current verified runtime boundary; durable cross-session or multi-week persistence is **not** claimed in the live submission.
-
-The Flight Recorder already emits typed `FlightEvent` records and checkpoint objects with stable run/checkpoint IDs, dependency metadata, digests, policy version, provenance, integrity state and timestamps. Those structured records form the persistence boundary. In an enterprise deployment, a **separately verified** durable adapter can persist the same records to services such as **Firestore** for cross-session operational state and route audit history to **BigQuery / Cloud Logging** for long-retention analysis. Those services are **enterprise extension targets, not active integrations in this submission**.
-
-This separation is architectural, not a claim that a future persistence box satisfies the Fortified multi-week-context requirement today. Deterministic trust, invalidation, blast-radius, reuse and action-gating semantics remain independent of the storage provider. A durable provider changes retention and restart survivability; it does not gain authority to mark state trusted or authorize an action.
+Canonical architecture source: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Trust graph
 
@@ -171,17 +189,32 @@ policy_rules -----------------------------------------------------+
 
 Minimum checkpoint states are `VERIFIED`, `INVALIDATED`, `RECOMPUTE`, and `BLOCKED`.
 
-Every material checkpoint binds run/checkpoint/agent IDs and versions, dependency checkpoint IDs, parent output digests, evidence/tool digests, policy version, output digest, verification state, provenance/integrity metadata, and timestamps where applicable.
+Every material checkpoint binds run/checkpoint/agent IDs and versions, dependency checkpoint IDs, parent-output digests, evidence/tool digests, policy version, output digest, verification state, provenance/integrity metadata, and timestamps where applicable.
 
 ## Controlled trust breaks
 
-All demo faults are visibly labeled controlled faults and enter the same runtime contracts used by verification:
+All demo faults are visibly labeled controlled faults and enter the same verification/recovery contracts:
 
 - `stale_evidence` — invalidates `history_snapshot` and its exact downstream branch;
 - `malformed_worker` — strict worker-output schema failure;
 - `policy_drift` — policy version drift invalidates policy-dependent state.
 
 The Recovery Mesh computes the rerun plan. The judge does not choose which agents rerun.
+
+## Google Agent Registry
+
+Recovery Mesh is registered in Google Agent Registry as the discoverable fleet entry point for the existing Cloud Run service.
+
+```text
+AGENT_REGISTRY=PASS
+AGENT_REGISTRY_SERVICE=projects/evidencebound-rm-c977c1/locations/global/services/recovery-mesh-fleet
+AGENT_REGISTRY_AGENT=projects/457699623691/locations/global/agents/agentregistry-00000000-0000-0000-a7f5-b9837959f789
+AGENT_REGISTRY_INTERFACE=https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app
+AGENT_REGISTRY_DISCOVERY=PASS
+Workflow: 31871557186
+```
+
+The Registry entry is catalog/discovery only. It represents the Recovery Mesh fleet endpoint and does not claim separate Registry entries for the four internal ADK roles.
 
 ## Reproduce locally
 
@@ -197,14 +230,13 @@ pytest
 PYTHONPATH=src uvicorn recovery_mesh.api:app --host 127.0.0.1 --port 8080
 ```
 
-Open `http://127.0.0.1:8080`.
-
-Credential-free local mode is deterministic and **does not claim Gemini execution**. Production Google execution uses:
+Credential-free local mode is deterministic and does **not** claim Gemini execution. Production Google execution uses:
 
 ```text
 RECOVERY_MESH_EXECUTION_MODE=google_adk
 GOOGLE_GENAI_USE_VERTEXAI=TRUE
 RECOVERY_MESH_MODEL=gemini-3.5-flash
+RECOVERY_MESH_PERSISTENCE_MODE=firestore
 ```
 
 ## Verification gates
@@ -215,50 +247,69 @@ mypy src/recovery_mesh
 pytest --cov=recovery_mesh --cov-report=term-missing
 python -m py_compile app/agent.py src/recovery_mesh/*.py scripts/benchmark-scale.py
 node --check static/app.js
+node --check static/durable.js
 PYTHONPATH=src python scripts/benchmark-scale.py
 ```
 
-CI additionally validates shell entrypoints, the production smoke harness, judge-facing UI contracts, secret scanning, the exact deterministic scale receipt, and a Docker build.
+CI additionally validates shell entrypoints, durable UI contracts, secret scanning, the deterministic scale receipt, and container build.
 
-The deterministic scale probe exercises **100 synthetic agent checkpoints** with the same blast-radius planner and locks the controlled receipt to `14 affected / 86 reused / 1 blocked action`. It is explicitly not evidence of 100 live Gemini calls.
+The deterministic scale probe exercises **100 synthetic agent checkpoints** with the same blast-radius planner and locks the controlled receipt to `14 affected / 86 reused / 1 blocked action`. It is not evidence of 100 live Gemini calls.
 
 ## Google Cloud deployment
 
-Production target:
-
 ```text
 Project: evidencebound-rm-c977c1
+Project number: 457699623691
 Cloud Run region: europe-west1
+Current revision: evidencebound-recovery-mesh-00007-bjm
 Vertex location: global
 Runtime SA: recovery-mesh-runtime@evidencebound-rm-c977c1.iam.gserviceaccount.com
 Build SA: recovery-mesh-build@evidencebound-rm-c977c1.iam.gserviceaccount.com
+Auditor SA: recovery-mesh-auditor@evidencebound-rm-c977c1.iam.gserviceaccount.com
 Model: gemini-3.5-flash
+Firestore: (default) / europe-west1
 Health: /health
-Agent Registry location: global
-Agent Registry Service: recovery-mesh-fleet
+Agent Registry: recovery-mesh-fleet / global
 ```
 
-Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub deploys keylessly through Workload Identity Federation restricted to this repository, owner, and `main` branch. Each production deploy performs a live Vertex/Gemini preflight and protected end-to-end recovery smoke.
-
-Agent Registry registration is a separate main-only, keyless control-plane workflow. It uses the existing WIF deployer identity, waits for the Google long-running operation, and fails closed unless the generated read-only Agent is observable before reporting PASS.
+Deployment is bounded to Cloud Run `min=0`, `max=1`, one CPU and 512 MiB. GitHub deploys keylessly through Workload Identity Federation restricted to this repository/owner/main boundary. Normal deployment verifies Firestore rather than provisioning it. Exact-run audit uses a separate read-only auditor identity.
 
 ## Security and trust boundary
 
 - no API keys or judge credentials in source or public UI;
 - judge key stored in Google Secret Manager;
-- state-changing/read-run APIs reject unauthenticated access before model execution;
+- state-changing/run APIs reject unauthenticated access before model execution;
 - no silent fallback from failed Google execution to deterministic output;
 - Gemini worker output is constrained to strict `WorkerOutput` JSON and allowed Trust Graph dependency IDs;
 - deterministic trust, provenance, integrity and policy gates remain authoritative;
-- side effects are fail-closed and idempotency-protected;
+- Firestore persists state but cannot confer trust;
+- side effects are fail-closed and durable-receipt/idempotency protected;
+- Cloud Logging is audit evidence, not authorization;
 - live model calls are process-bounded to reduce accidental public-demo traffic;
-- Agent Registry is catalog/discovery control plane only and does not override Recovery Mesh trust state or action authorization.
+- Agent Registry is catalog/discovery control plane only.
 
-## Fortified Enterprise Fleet scope note
+## Fortified Enterprise Fleet scope
 
-Recovery Mesh is the fleet-integrity and selective-recovery plane for a Fortified Enterprise deployment. The current judge slice demonstrates four specialized ADK agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, audit events, Google Cloud deployment, protected access, bounded service identities, **and a live Google Agent Registry catalog/discovery entry for the Recovery Mesh fleet endpoint**.
+The current judge slice demonstrates four specialized ADK agents, deterministic contamination propagation, fail-closed action, exact blast radius, selective recomputation, **live Firestore durable persistence with validated rehydration**, **exact-run Google Cloud Logging causal audit**, protected Cloud Run execution, bounded identities and Google Agent Registry discovery.
 
-It does **not** claim that the process-local demo store provides multi-week context. It also does not claim Agent Runtime, Memory Bank, Model Armor, Firestore persistence, BigQuery export, or separate Registry entries for each internal ADK role without a separately verified integration.
+It does **not** claim without separate evidence:
+
+- BigQuery export;
+- Agent Runtime;
+- Memory Bank;
+- Model Armor;
+- universal savings percentages;
+- a forced Cloud Run instance-kill production replay proving restart-surviving exactly-once behavior.
+
+## Video status
+
+Current Devpost video remains V1:
+
+```text
+https://youtu.be/AExuVCC-m7o
+```
+
+The next public proof video should show current revision `00007-bjm` and real Google Cloud terminal/console evidence for Cloud Run, Firestore and exact-run Cloud Logging. Devpost is not considered video-updated until the new public URL is read back successfully.
 
 ## New-project disclosure
 
@@ -266,12 +317,14 @@ This is a new isolated project created during the August 2026 submission period.
 
 ## Judge evidence map
 
+- [`docs/FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md`](docs/FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md) — current production receipt
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and trust boundaries
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — threats, controls, and explicit non-claims
-- [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — acceptance gates
+- [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — current acceptance gates
+- [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md) — reproducible judge flow
 - [`docs/DEVPOST_SUBMISSION_MATRIX.md`](docs/DEVPOST_SUBMISSION_MATRIX.md) — submission evidence matrix
-- [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — <=4-minute recording plan
+- [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — recording plan
 
 ## Scope discipline
 
-Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge is not part of the judge-ready core and is intentionally excluded unless a separate, verified integration can be added without destabilizing this submission.
+Recovery Mesh is the submitted product. SignalReview concepts may inform the bounded workload, but no production SignalReview source is included. AdsForge remains outside the judge-ready core.

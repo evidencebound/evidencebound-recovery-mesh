@@ -47,6 +47,19 @@ def test_policy_drift_recovery_persists_new_policy_and_rehydrates_trusted() -> N
     assert durable is not None
     snapshot = durable["snapshot"]
     assert snapshot["active_policy_version"] == "policy-v2"
+
+    checkpoints = {item["checkpoint_id"]: item for item in snapshot["checkpoints"]}
+    for checkpoint_id in ("policy_rules", "orchestrator", "publish_action"):
+        assert checkpoints[checkpoint_id]["policy_version"] == "policy-v2"
+    for checkpoint_id in (
+        "fixture_snapshot",
+        "history_snapshot",
+        "statistician",
+        "scout",
+        "skeptic",
+    ):
+        assert checkpoints[checkpoint_id]["policy_version"] == "policy-v1"
+
     assert durable["action_receipt"] is not None
     assert durable["rehydration"]["trusted"] is True
     assert durable["rehydration"]["failures"] == []

@@ -5,7 +5,7 @@ Category: **Fortified Enterprise Fleet**
 Devpost project: `evidencebound-recovery-mesh`  
 Submission ID: `1136853`
 
-> Current-state document. A field is listed as implemented/used only when backed by repository, production, or live Devpost evidence.
+> Current-state document. A field is listed as implemented/used only when backed by repository, production, Google Cloud, or live Devpost evidence.
 
 ## Current submission state — 2026-08-28
 
@@ -17,43 +17,54 @@ Submission ID: `1136853`
 | Startup Prize organization/email | blank | INTENTIONALLY NOT CLAIMED |
 | Public code repository | `https://github.com/evidencebound/evidencebound-recovery-mesh` | LIVE / READ BACK |
 | Reproducible README | `Yes` | PASS |
-| Hosted project URL | `https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/` | LIVE / VERIFIED BY CURRENT ACCEPTANCE |
+| Hosted project URL | `https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/` | LIVE / VERIFIED |
 | Preferred judge route | `?autorun=stale_evidence&recover=1` | HANDS-OFF / VERIFIED |
-| Private judge testing instructions | private Devpost field + public detailed runbook | OWNER-VISIBLE; credential remains private |
+| Private judge testing instructions | private Devpost field + public runbook | OWNER-VISIBLE; credential remains private |
 | Google SDK | `Agent Development Kit (ADK)` | LIVE / VERIFIED |
-| Google Cloud service answer | `Cloud Run` | LIVE / VERIFIED |
+| Google Cloud runtime | `Cloud Run` | LIVE / VERIFIED |
 | Google AI model | `Gemini 3.5 Flash via Vertex AI` | LIVE / VERIFIED |
-| Architecture diagram | Architecture Diagram v2 | UPLOADED / VERIFIED AGAINST CURRENT ARCHITECTURE |
+| Durable persistence | `Firestore Durable Trust Ledger` | LIVE / VERIFIED |
+| External causal audit | `Google Cloud Logging exact-run proof` | LIVE / VERIFIED |
+| Agent discovery | `Google Agent Registry fleet entry point` | LIVE / VERIFIED |
+| Architecture diagram | must match current Firestore + Cloud Logging architecture | REPO SOURCE UPDATED; DEVPOST IMAGE READBACK STILL OWNER-VISIBLE |
 | Demo video | `https://youtu.be/AExuVCC-m7o` | V1 PUBLIC / CURRENT DEVPOST VIDEO |
-| Video V2 | 75.080 s publication-ready master | LOCAL ASSEMBLY VERIFIED / PUBLICATION PENDING |
+| Final proof video | current `00007-bjm` + real GCP terminal proof | PUBLICATION PENDING |
 | Bonus technical article | DEV.to URL supplied in Devpost | SUBMITTED |
 | Bonus social post | LinkedIn URL with `#AllThingsAgenticHackathon` | SUBMITTED |
 
 The Devpost gallery images are presentation assets rather than runtime evidence; they must not introduce capabilities absent from the live system.
 
-## Current production evidence
+## Current fortified production evidence
 
 ```text
 Project:              evidencebound-rm-c977c1
-Cloud Run revision:   evidencebound-recovery-mesh-00006-tc4
+Cloud Run revision:   evidencebound-recovery-mesh-00007-bjm
 Hosted URL:           https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/
 Canonical .run.app:   https://evidencebound-recovery-mesh-457699623691.europe-west1.run.app
 Health endpoint:      /health
 Provider:             google_adk_vertex
 Model:                gemini-3.5-flash
 Google ADK:           2.7.0
-Acceptance workflow:  32817763402
-Acceptance run:       run-6d1427ccb2ca
+Persistence:          firestore / durable=true
+Firestore database:   (default) / europe-west1
+Deployment workflow:  33196157041 — SUCCESS
+Acceptance workflow:  33196523402 — SUCCESS
+Acceptance run:       run-4f1eba151be7
+Exact-run Cloud Logs: PASS
+GCP proof receipt:    PASS
 ```
 
 Verified hands-off judge path:
 
 ```text
 4 live ADK agents
-TRUST BREAK: history_snapshot
+TRUST BREAK: history_snapshot / STALE_EVIDENCE
 ACTION BLOCKED: publish_action
-SAFE WORK REUSED: scout
-SELECTIVE RECOVERY: statistician + skeptic + orchestrator rerun
+BLOCKED FIRESTORE ACTION RECEIPTS: 0
+SAFE WORK REUSED: Scout
+SELECTIVE RECOVERY: Statistician + Skeptic + Orchestrator rerun
+RECOVERED FIRESTORE ACTION RECEIPTS: 1
+REHYDRATION: trusted only after deterministic validation
 FINAL ACTION: VERIFIED
 ```
 
@@ -62,27 +73,53 @@ Protected production API evidence includes unauthenticated `POST /api/runs -> 40
 ## Current measured production receipt
 
 ```text
-Run:                 run-6d1427ccb2ca
-Full restart:        4 model calls / 1739 input tokens
-Selective recovery: 3 model calls / 1388 input tokens
-Saved:               1 model call / 351 input tokens (~20%)
+Run:                 run-4f1eba151be7
+Full restart:        4 model calls / 1707 input tokens
+Selective recovery: 3 model calls / 1432 input tokens
+Saved:               1 model call / 275 input tokens (~16.1%)
 ```
 
 These values belong only to that controlled production run and are not a universal savings claim.
 
-## Video V2 capture receipt — separate evidence class
+## Firestore durable proof
+
+The current production revision actively uses Firestore for the Durable Trust Ledger. Live acceptance verified:
 
 ```text
-Capture run:         run-06fdaf68fdff
-Mode:                HANDS_OFF_STAGED_AUTORUN
-Full restart:        4 model calls / 1744 input tokens
-Selective recovery: 3 model calls / 1366 input tokens
-Saved:               1 model call / 378 input tokens (~22%)
-Continuous segment:  24.080 s / 602 frames
-Frame equality:      PASS — 602 / 602 preserved in assembled WebM
+FIRESTORE_DATABASE=READY
+FIRESTORE_BLOCKED_RECEIPT_COUNT=PASS count=0 run_id=run-4f1eba151be7
+DURABLE_BLOCKED=PASS action=BLOCKED receipt=absent persisted_trust=validated
+DURABLE_RECOVERY=PASS receipt=present rehydration=trusted
+FIRESTORE_RECOVERED_RECEIPT_COUNT=PASS count=1 run_id=run-4f1eba151be7
 ```
 
-Capture metrics are intentionally kept separate from the newer production acceptance receipt.
+Firestore is persistence, not trust authority. Persisted state must pass deterministic validation before reuse.
+
+The exact live acceptance did not deliberately kill a Cloud Run instance between persistence and replay; do not convert this receipt into a broader forced-restart production claim.
+
+## Exact-run Google Cloud Logging proof
+
+The second job in workflow `33196523402` uses the separate auditor identity and queries Cloud Logging for the same acceptance `run_id`.
+
+```text
+EXACT_RUN_CLOUD_LOGGING=PASS run_id=run-4f1eba151be7
+GCP_PROOF_RECEIPT=PASS
+```
+
+Observed causal events include:
+
+```text
+TRUST_BREAK_DETECTED
+BLAST_RADIUS_COMPUTED
+ACTION_BLOCKED
+CHECKPOINT_REUSED
+RECOMPUTE_STARTED
+CHECKPOINT_REVERIFIED
+ACTION_RESUMED
+RECOVERY_COMPLETED
+```
+
+This is production audit evidence; Cloud Logging does not authorize trust transitions.
 
 ## Verified Google Agent Registry evidence
 
@@ -95,7 +132,7 @@ AGENT_REGISTRY_DISCOVERY=PASS
 Workflow: 31871557186
 ```
 
-The Registry entry represents the Recovery Mesh fleet entry point. The submission does not claim separate Registry entries for the four internal ADK roles.
+This 2026-08-15 control-plane receipt represents the Recovery Mesh fleet entry point. It is not presented as a new 2026-08-28 registration and does not imply separate Registry entries for the four internal ADK roles.
 
 ## New-project boundary
 
@@ -103,19 +140,30 @@ Recovery Mesh is a new isolated hackathon repository. Pre-existing EvidenceBound
 
 ## Explicit non-claims
 
-The live submission uses a bounded process-local hot store. It does **not** claim:
+The live submission does **not** claim without separate evidence:
 
-- durable multi-week context;
-- Firestore persistence;
 - BigQuery export;
 - Agent Runtime;
 - Memory Bank;
 - Model Armor;
-- durable exactly-once semantics across process restart;
-- 100 live Gemini agents in the synthetic scale probe.
+- universal token/cost savings;
+- a forced Cloud Run instance-kill production replay proving restart-surviving exactly-once behavior;
+- 100 live Gemini agents in the synthetic scale probe;
+- that Firestore, Cloud Logging, Agent Registry, or Gemini can override Recovery Mesh deterministic trust authority.
 
-## Remaining publication gate
+## Current video gate
 
-Do **not** replace the current Devpost V1 video until Video V2 is publicly uploaded to YouTube/Vimeo, opens without owner authentication, and the Devpost project readback shows the exact new URL.
+The public Devpost video remains V1 until a new public YouTube/Vimeo proof is uploaded and read back.
 
-The canonical repository URL and current Devpost description have already been read back as current. Team-roster acceptance remains a separate owner-visible field and must not be inferred from repository or runtime evidence.
+The next proof video should use current revision `evidencebound-recovery-mesh-00007-bjm` and visibly show real Google Cloud evidence for:
+
+- project `evidencebound-rm-c977c1`;
+- Cloud Run revision `00007-bjm`;
+- live `/health` with `google_adk_vertex`, `gemini-3.5-flash`, `firestore`, `durable=true`;
+- Firestore `(default)` in `europe-west1`;
+- exact-run Cloud Logging for the Recovery Mesh causal events;
+- the hands-off Flight Recorder trust-break → selective-recovery judge moment.
+
+Do **not** replace the current V1 video until the new URL is public and Devpost readback shows the exact URL.
+
+Canonical production receipt: [`FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md`](FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md).

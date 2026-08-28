@@ -79,7 +79,10 @@ def test_rehydration_fails_closed_when_parent_digest_drifted() -> None:
     receipt = persistence.verify_persisted_snapshot(snapshot, action_receipt=None)
 
     assert receipt.trusted is False
-    assert any("statistician" in failure and "input digest" in failure for failure in receipt.failures)
+    assert any(
+        "statistician" in failure and "input digest" in failure
+        for failure in receipt.failures
+    )
 
 
 def test_rehydration_fails_closed_on_policy_mismatch() -> None:

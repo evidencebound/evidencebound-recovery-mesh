@@ -4,12 +4,14 @@ import os
 import secrets
 from pathlib import Path
 from threading import Lock
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .execution import AgentExecutionError, ExecutionUnavailable, executor_from_environment
+from .persistence import RunStore, store_from_environment, verify_persisted_snapshot
 from .runtime import DemoRun, UnsupportedScenario
 
 STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
@@ -21,6 +23,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _runs: dict[str, DemoRun] = {}
 _lock = Lock()
+_store: RunStore = store_from_environment()
 
 
 def _judge_access_required() -> bool:
@@ -65,6 +68,11 @@ def health() -> dict[str, object]:
         "status": "ok",
         "service": "evidencebound-recovery-mesh",
         "execution": execution,
+        "persistence": {
+            "provider": _store.provider_name,
+            "durable": _store.durable,
+            "project": _store.project_id,
+        },
         "judge_access_required": _judge_access_required(),
         "judge_key_header": _JUDGE_KEY_HEADER,
     }
@@ -73,8 +81,8 @@ def health() -> dict[str, object]:
 @app.post("/api/runs", dependencies=[Depends(_require_judge_access)])
 def create_run() -> dict[str, object]:
     try:
-        run = DemoRun()
-    except (ExecutionUnavailable, AgentExecutionError) as exc:
+        run = DemoRun(store=_store)
+    except (ExecutionUnavailable, AgentExecutionError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     with _lock:
         _runs[run.run_id] = run
@@ -84,6 +92,29 @@ def create_run() -> dict[str, object]:
 @app.get("/api/runs/{run_id}", dependencies=[Depends(_require_judge_access)])
 def get_run(run_id: str) -> dict[str, object]:
     return _get_run(run_id).snapshot()
+
+
+@app.get("/api/durable-runs/{run_id}", dependencies=[Depends(_require_judge_access)])
+def get_durable_run(run_id: str) -> dict[str, object]:
+    snapshot = _store.load_run_snapshot(run_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="durable run not found")
+    action_key = _action_side_effect_key(snapshot)
+    action_receipt = _store.get(action_key) if action_key is not None else None
+    rehydration = verify_persisted_snapshot(snapshot, action_receipt)
+    return {
+        "snapshot": snapshot,
+        "rehydration": rehydration.as_dict(),
+        "action_receipt": (
+            {
+                "side_effect_key": action_receipt.side_effect_key,
+                "payload_digest": action_receipt.payload_digest,
+                "committed_at": action_receipt.committed_at.isoformat(),
+            }
+            if action_receipt is not None
+            else None
+        ),
+    }
 
 
 @app.post(
@@ -111,6 +142,20 @@ def recover(run_id: str) -> dict[str, object]:
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return run.snapshot()
+
+
+def _action_side_effect_key(snapshot: dict[str, Any]) -> str | None:
+    checkpoints = snapshot.get("checkpoints", [])
+    if not isinstance(checkpoints, list):
+        return None
+    for checkpoint in checkpoints:
+        if not isinstance(checkpoint, dict):
+            continue
+        if checkpoint.get("checkpoint_id") != "publish_action":
+            continue
+        key = checkpoint.get("side_effect_key")
+        return key if isinstance(key, str) and key else None
+    return None
 
 
 def _get_run(run_id: str) -> DemoRun:

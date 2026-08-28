@@ -27,7 +27,7 @@ def test_firestore_bootstrap_is_idempotent_and_least_privilege() -> None:
 def test_cloud_run_deploy_bootstraps_and_enables_firestore_mode() -> None:
     deploy = Path("scripts/deploy-cloud-run.sh").read_text(encoding="utf-8")
 
-    assert "gcp-firestore-bootstrap.sh" in deploy
+    assert 'bash "$(dirname "$0")/gcp-firestore-bootstrap.sh"' in deploy
     assert "RECOVERY_MESH_FIRESTORE_BOOTSTRAP_MODE=verify" in deploy
     assert "RECOVERY_MESH_PERSISTENCE_MODE=firestore" in deploy
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import Lock
-from typing import Any
+from typing import Any, Protocol
 
 from .graph import TrustGraph
 from .hashing import sha256_digest
@@ -44,14 +44,31 @@ class SideEffectReceipt:
     duplicate_suppressed: bool
 
 
+class ActionLedger(Protocol):
+    def commit(
+        self,
+        key: str,
+        payload: Any,
+        *,
+        run_id: str | None = None,
+    ) -> SideEffectReceipt: ...
+
+
 class SideEffectLedger:
-    """Thread-safe process-local exactly-once demo ledger; durable store is deployment work."""
+    """Thread-safe process-local idempotency ledger for local/test execution."""
 
     def __init__(self) -> None:
         self._receipts: dict[str, SideEffectReceipt] = {}
         self._lock = Lock()
 
-    def commit(self, key: str, payload: Any) -> SideEffectReceipt:
+    def commit(
+        self,
+        key: str,
+        payload: Any,
+        *,
+        run_id: str | None = None,
+    ) -> SideEffectReceipt:
+        del run_id
         digest = sha256_digest(payload)
         with self._lock:
             existing = self._receipts.get(key)
@@ -74,6 +91,10 @@ class SideEffectLedger:
             )
             self._receipts[key] = receipt
             return receipt
+
+    def get(self, key: str) -> SideEffectReceipt | None:
+        with self._lock:
+            return self._receipts.get(key)
 
 
 class RecoveryEngine:
@@ -195,7 +216,7 @@ class RecoveryEngine:
         checkpoint_id: str,
         *,
         payload: Any,
-        ledger: SideEffectLedger,
+        ledger: ActionLedger,
     ) -> SideEffectReceipt:
         action = self.graph.checkpoint(checkpoint_id)
         if action.kind is not CheckpointKind.ACTION:
@@ -208,12 +229,16 @@ class RecoveryEngine:
                 )
         if not action.side_effect_key:
             raise RecoveryInvariantError("action has no side_effect_key")
-        receipt = ledger.commit(action.side_effect_key, payload)
+        receipt = ledger.commit(action.side_effect_key, payload, run_id=self.graph.run_id)
         digest = sha256_digest(payload)
         replacement = action.model_copy(
             update={
                 "structured_output_digest": digest,
                 "integrity": action.integrity.model_copy(update={"digest": digest}),
+                "input_digests": tuple(
+                    self.graph.checkpoint(parent_id).structured_output_digest
+                    for parent_id in action.dependency_checkpoint_ids
+                ),
                 "verification_status": TrustStatus.VERIFIED,
                 "verified_at": datetime.now(UTC),
             }

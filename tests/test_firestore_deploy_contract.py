@@ -13,30 +13,31 @@ def test_firestore_bootstrap_is_idempotent_and_least_privilege() -> None:
     assert "--edition=standard" in text
     assert "--type=firestore-native" in text
     assert "roles/datastore.user" in text
+    assert "roles/datastore.viewer" in text
     assert "recovery-mesh-runtime" in text
+    assert "recovery-mesh-deployer" in text
     assert "iam.gserviceaccount.com" in text
     assert "FIRESTORE_DATABASE=READY" in text
     assert "FIRESTORE_RUNTIME_IAM=READY" in text
+    assert "FIRESTORE_DEPLOYER_IAM=READ_ONLY_READY" in text
+    assert "roles/datastore.owner" not in text
+    assert "roles/resourcemanager.projectIamAdmin" not in text
 
 
 def test_cloud_run_deploy_bootstraps_and_enables_firestore_mode() -> None:
     deploy = Path("scripts/deploy-cloud-run.sh").read_text(encoding="utf-8")
 
     assert "gcp-firestore-bootstrap.sh" in deploy
+    assert "RECOVERY_MESH_FIRESTORE_BOOTSTRAP_MODE=verify" in deploy
     assert "RECOVERY_MESH_PERSISTENCE_MODE=firestore" in deploy
 
 
-def test_owner_bootstrap_provisions_firestore_without_broadening_ci_deployer() -> None:
-    owner = Path("scripts/gcp-owner-bootstrap.sh").read_text(encoding="utf-8")
+def test_firestore_provisioning_remains_separate_from_normal_deployer_wif() -> None:
     deploy_wif = Path("scripts/gcp-bootstrap-deploy-wif.sh").read_text(encoding="utf-8")
 
-    assert "firestore.googleapis.com" in owner
-    assert "RECOVERY_MESH_FIRESTORE_BOOTSTRAP_MODE=provision" in owner
-    assert "gcp-firestore-bootstrap.sh" in owner
-    assert "roles/datastore.viewer" in owner
-    assert "roles/datastore.viewer" in deploy_wif
     assert "roles/datastore.owner" not in deploy_wif
     assert "roles/resourcemanager.projectIamAdmin" not in deploy_wif
+    assert "gcloud firestore databases create" not in deploy_wif
 
 
 def test_ci_validates_firestore_bootstrap_shell_and_durable_javascript() -> None:

@@ -8,7 +8,8 @@ def test_firestore_bootstrap_is_idempotent_and_least_privilege() -> None:
 
     assert "firestore.googleapis.com" in text
     assert "gcloud firestore databases describe" in text
-    assert "'(default)'" in text or '"(default)"' in text
+    assert 'DATABASE_ID="${RECOVERY_MESH_FIRESTORE_DATABASE:-(default)}"' in text
+    assert "RECOVERY_MESH_FIRESTORE_DATABASE:-'(default)'" not in text
     assert "gcloud firestore databases create" in text
     assert "--edition=standard" in text
     assert "--type=firestore-native" in text

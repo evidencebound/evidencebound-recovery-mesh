@@ -106,6 +106,7 @@ class InMemoryRunStore:
 class FirestoreRunStore:
     provider_name = "firestore"
     durable = True
+    project_id: str | None
 
     def __init__(self, project_id: str) -> None:
         from google.cloud import firestore

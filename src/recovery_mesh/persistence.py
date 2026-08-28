@@ -211,6 +211,27 @@ def store_from_environment() -> RunStore:
     raise RuntimeError(f"unsupported RECOVERY_MESH_PERSISTENCE_MODE: {mode}")
 
 
+def _policy_bound_checkpoint_ids(
+    checkpoints: dict[str, dict[str, Any]],
+) -> set[str]:
+    policy_bound = {
+        checkpoint_id
+        for checkpoint_id, item in checkpoints.items()
+        if item.get("kind") == "POLICY"
+    }
+    for _ in range(len(checkpoints)):
+        before = len(policy_bound)
+        for checkpoint_id, item in checkpoints.items():
+            dependencies = item.get("dependencies", [])
+            if not isinstance(dependencies, list):
+                continue
+            if any(dependency in policy_bound for dependency in dependencies):
+                policy_bound.add(checkpoint_id)
+        if len(policy_bound) == before:
+            break
+    return policy_bound
+
+
 def verify_persisted_snapshot(
     snapshot: dict[str, Any],
     action_receipt: SideEffectReceipt | None,
@@ -232,6 +253,7 @@ def verify_persisted_snapshot(
         checkpoints[checkpoint_id] = item
 
     active_policy = snapshot.get("active_policy_version")
+    policy_bound = _policy_bound_checkpoint_ids(checkpoints)
     allowed_states = {"VERIFIED", "INVALIDATED", "RECOMPUTE", "BLOCKED"}
     for checkpoint_id, item in checkpoints.items():
         status = item.get("status")
@@ -250,7 +272,11 @@ def verify_persisted_snapshot(
             failures.append(f"{checkpoint_id}: missing dependencies {missing}")
             continue
         if status == "VERIFIED":
-            if active_policy is not None and item.get("policy_version") != active_policy:
+            if (
+                checkpoint_id in policy_bound
+                and active_policy is not None
+                and item.get("policy_version") != active_policy
+            ):
                 failures.append(f"{checkpoint_id}: policy version mismatch")
             expected_inputs = [checkpoints[dep].get("output_digest") for dep in dependencies]
             if list(item.get("input_digests", [])) != expected_inputs:

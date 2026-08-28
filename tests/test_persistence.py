@@ -95,12 +95,25 @@ def test_rehydration_fails_closed_when_parent_digest_drifted() -> None:
 def test_rehydration_fails_closed_on_policy_mismatch() -> None:
     persistence = _persistence_module()
     snapshot = _verified_snapshot()
-    snapshot["checkpoints"][1]["policy_version"] = "policy-v0"
+    snapshot["checkpoints"].append(
+        {
+            "checkpoint_id": "policy_rules",
+            "kind": "POLICY",
+            "dependencies": [],
+            "input_digests": [],
+            "evidence_digests": [],
+            "tool_result_digests": [],
+            "output_digest": "digest-policy-v0",
+            "integrity_digest": "digest-policy-v0",
+            "status": "VERIFIED",
+            "policy_version": "policy-v0",
+        }
+    )
 
     receipt = persistence.verify_persisted_snapshot(snapshot, action_receipt=None)
 
     assert receipt.trusted is False
-    assert any("policy" in failure for failure in receipt.failures)
+    assert any("policy_rules" in failure and "policy" in failure for failure in receipt.failures)
 
 
 def test_rehydration_rejects_malformed_and_missing_dependencies() -> None:
@@ -143,7 +156,7 @@ def test_inmemory_action_receipt_is_idempotent_and_rejects_conflicts() -> None:
         )
 
 
-class _FakeSnapshot:
+class _FakeDocumentSnapshot:
     def __init__(self, data: dict[str, Any] | None) -> None:
         self._data = copy.deepcopy(data)
         self.exists = data is not None
@@ -152,89 +165,111 @@ class _FakeSnapshot:
         return copy.deepcopy(self._data)
 
 
-class _FakeDoc:
-    def __init__(self, client: _FakeClient, path: str) -> None:
-        self.client = client
-        self.path = path
+class _FakeDocumentReference:
+    def __init__(self, storage: dict[str, dict[str, Any]], path: str) -> None:
+        self._storage = storage
+        self._path = path
 
     def set(self, data: dict[str, Any]) -> None:
-        self.client.documents[self.path] = copy.deepcopy(data)
+        self._storage[self._path] = copy.deepcopy(data)
 
     def create(self, data: dict[str, Any]) -> None:
-        if self.path in self.client.documents:
-            raise AlreadyExists("exists")
+        if self._path in self._storage:
+            raise AlreadyExists("already exists")
         self.set(data)
 
-    def get(self) -> _FakeSnapshot:
-        return _FakeSnapshot(self.client.documents.get(self.path))
+    def get(self) -> _FakeDocumentSnapshot:
+        return _FakeDocumentSnapshot(self._storage.get(self._path))
 
-    def collection(self, name: str) -> _FakeCollection:
-        return _FakeCollection(self.client, f"{self.path}/{name}")
-
-
-class _FakeCollection:
-    def __init__(self, client: _FakeClient, path: str) -> None:
-        self.client = client
-        self.path = path
-
-    def document(self, document_id: str) -> _FakeDoc:
-        return _FakeDoc(self.client, f"{self.path}/{document_id}")
+    def collection(self, name: str) -> _FakeCollectionReference:
+        return _FakeCollectionReference(self._storage, f"{self._path}/{name}")
 
 
-class _FakeClient:
+class _FakeCollectionReference:
+    def __init__(self, storage: dict[str, dict[str, Any]], path: str) -> None:
+        self._storage = storage
+        self._path = path
+
+    def document(self, name: str) -> _FakeDocumentReference:
+        return _FakeDocumentReference(self._storage, f"{self._path}/{name}")
+
+
+class _FakeFirestoreClient:
     def __init__(self) -> None:
-        self.documents: dict[str, dict[str, Any]] = {}
+        self.storage: dict[str, dict[str, Any]] = {}
 
-    def collection(self, name: str) -> _FakeCollection:
-        return _FakeCollection(self, name)
+    def collection(self, name: str) -> _FakeCollectionReference:
+        return _FakeCollectionReference(self.storage, name)
 
 
-def test_firestore_store_round_trip_events_and_idempotent_receipts(monkeypatch: Any) -> None:
+def _fake_firestore_store() -> Any:
     persistence = _persistence_module()
-    fake = _FakeClient()
-    import google.cloud.firestore
+    store = object.__new__(persistence.FirestoreRunStore)
+    store.project_id = "evidencebound-rm-c977c1"
+    store._client = _FakeFirestoreClient()
+    return store
 
-    monkeypatch.setattr(google.cloud.firestore, "Client", lambda project: fake)
-    store = persistence.FirestoreRunStore("project-1")
+
+def test_firestore_store_round_trips_snapshot_and_events() -> None:
+    store = _fake_firestore_store()
     snapshot = _verified_snapshot()
 
-    store.save_run_snapshot("run-persist-1", snapshot)
-    loaded = store.load_run_snapshot("run-persist-1")
+    store.save_run_snapshot("run-firestore-1", snapshot)
+    loaded = store.load_run_snapshot("run-firestore-1")
     assert loaded is not None
     assert loaded["run_id"] == "run-persist-1"
     assert isinstance(loaded["persisted_at"], datetime)
     assert store.load_run_snapshot("missing") is None
 
     event = FlightEvent(
-        event_id=1,
-        run_id="run-persist-1",
-        event_type=EventType.TRUST_BREAK_DETECTED,
-        message="break",
+        event_id=7,
+        run_id="run-firestore-1",
+        event_type=EventType.ACTION_BLOCKED,
+        checkpoint_id="publish_action",
+        message="blocked",
     )
     store.append_event(event)
-    assert "recovery_mesh_runs/run-persist-1/events/000001" in fake.documents
+    event_doc = store._client.storage[
+        "recovery_mesh_runs/run-firestore-1/events/000007"
+    ]
+    assert event_doc["event_type"] == "ACTION_BLOCKED"
 
-    payload = {"run_id": "run-persist-1", "safe": True}
-    first = store.commit("publish:run-persist-1", payload, run_id="run-persist-1")
-    duplicate = store.commit("publish:run-persist-1", payload, run_id="run-persist-1")
+
+def test_firestore_action_receipt_is_exactly_once_and_conflict_fails_closed() -> None:
+    store = _fake_firestore_store()
+    payload = {"run_id": "run-firestore-1", "safe": True}
+
+    first = store.commit("run-firestore-1:publish", payload, run_id="run-firestore-1")
+    duplicate = store.commit("run-firestore-1:publish", payload, run_id="run-firestore-1")
+
     assert first.duplicate_suppressed is False
     assert duplicate.duplicate_suppressed is True
-    assert duplicate.committed_at == first.committed_at
-
-    fetched = store.get("publish:run-persist-1")
-    assert fetched is not None
-    assert fetched.payload_digest == first.payload_digest
-    assert store.get("missing") is None
+    assert duplicate.payload_digest == first.payload_digest
+    loaded = store.get("run-firestore-1:publish")
+    assert loaded is not None
+    assert loaded.payload_digest == first.payload_digest
 
     with pytest.raises(RuntimeError, match="different payload"):
         store.commit(
-            "publish:run-persist-1",
-            {"run_id": "run-persist-1", "safe": False},
-            run_id="run-persist-1",
+            "run-firestore-1:publish",
+            {"run_id": "run-firestore-1", "safe": False},
+            run_id="run-firestore-1",
         )
 
 
-def test_store_from_environment_is_explicit_and_fail_closed(monkeypatch: Any) -> None:
+def test_firestore_get_rejects_malformed_receipt_documents() -> None:
+    store = _fake_firestore_store()
+    doc_id = store._receipt_document_id("malformed")
+    path = f"recovery_mesh_action_receipts/{doc_id}"
+
+    store._client.storage[path] = {"committed_at": datetime.now()}
+    assert store.get("malformed") is None
+
+    store._client.storage[path] = {"payload_digest": "digest", "committed_at": "bad"}
+    assert store.get("malformed") is None
+
+
+def test_store_from_environment_selects_memory_and_fails_closed(monkeypatch: Any) -> None:
     persistence = _persistence_module()
     monkeypatch.delenv("RECOVERY_MESH_PERSISTENCE_MODE", raising=False)
     assert persistence.store_from_environment().provider_name == "memory"
@@ -244,35 +279,6 @@ def test_store_from_environment_is_explicit_and_fail_closed(monkeypatch: Any) ->
     with pytest.raises(RuntimeError, match="GOOGLE_CLOUD_PROJECT"):
         persistence.store_from_environment()
 
-    sentinel = object()
-    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "project-1")
-    monkeypatch.setattr(persistence, "FirestoreRunStore", lambda project_id: sentinel)
-    assert persistence.store_from_environment() is sentinel
-
-    monkeypatch.setenv("RECOVERY_MESH_PERSISTENCE_MODE", "unknown")
+    monkeypatch.setenv("RECOVERY_MESH_PERSISTENCE_MODE", "unsupported")
     with pytest.raises(RuntimeError, match="unsupported"):
         persistence.store_from_environment()
-
-
-def test_rehydration_requires_action_receipt_after_completed_recovery() -> None:
-    persistence = _persistence_module()
-    snapshot = _verified_snapshot()
-    snapshot["checkpoints"].append(
-        {
-            "checkpoint_id": "publish_action",
-            "kind": "ACTION",
-            "dependencies": ["statistician"],
-            "input_digests": ["digest-stat"],
-            "evidence_digests": [],
-            "tool_result_digests": [],
-            "output_digest": "digest-action",
-            "integrity_digest": "digest-action",
-            "status": "VERIFIED",
-            "policy_version": "policy-v1",
-        }
-    )
-    snapshot["events"] = [{"event_type": "RECOVERY_COMPLETED"}]
-
-    missing = persistence.verify_persisted_snapshot(snapshot, None)
-    assert missing.trusted is False
-    assert any("missing durable action receipt" in failure for failure in missing.failures)

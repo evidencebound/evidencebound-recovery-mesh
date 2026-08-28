@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from time import perf_counter_ns
@@ -15,7 +16,8 @@ from .execution import (
 from .flight_recorder import EventType, FlightEvent
 from .graph import TrustGraph
 from .models import CheckpointKind, ProvenanceMetadata, TrustBreak, TrustStatus
-from .recovery import RecoveryEngine, RecoveryPlan, SideEffectLedger
+from .persistence import RunStore, store_from_environment, verify_persisted_snapshot
+from .recovery import RecoveryEngine, RecoveryPlan
 from .verification import (
     detect_malformed_worker_output,
     detect_policy_drift,
@@ -96,10 +98,12 @@ class DemoRun:
         run_id: str | None = None,
         *,
         executor: FleetExecutor | None = None,
+        store: RunStore | None = None,
     ):
         self.run_id = run_id or f"run-{uuid4().hex[:12]}"
         self.executor = executor or executor_from_environment()
-        self.ledger = SideEffectLedger()
+        self.store = store or store_from_environment()
+        self.ledger = self.store
         self.events: list[FlightEvent] = []
         self._event_seq = 0
         self.active_plan: RecoveryPlan | None = None
@@ -143,6 +147,7 @@ class DemoRun:
                 checkpoint_id=checkpoint.checkpoint_id,
                 data={"kind": checkpoint.kind.value},
             )
+        self._persist_state()
 
     def inject_fault(self, scenario: str) -> RecoveryPlan:
         if self.active_plan is not None:
@@ -188,6 +193,7 @@ class DemoRun:
                 "Still-verifiable checkpoint preserved; no rerun scheduled.",
                 checkpoint_id=checkpoint_id,
             )
+        self._persist_state()
         return plan
 
     def recover(self) -> BenchmarkReceipt:
@@ -312,6 +318,7 @@ class DemoRun:
         )
         self.active_plan = None
         self.active_scenario = None
+        self._persist_state()
         return self.benchmark
 
     def snapshot(self) -> dict[str, Any]:
@@ -338,8 +345,10 @@ class DemoRun:
                     "input_token_reduction_ratio": self.benchmark.input_token_reduction_ratio,
                 }
             )
+        action_receipt = self._action_receipt()
         return {
             "run_id": self.run_id,
+            "active_policy_version": self.active_policy_version,
             "execution": {
                 "provider": self.executor.provider_name,
                 "model": self.executor.model_name,
@@ -347,6 +356,22 @@ class DemoRun:
                 "baseline": [self._public_receipt(item) for item in self.baseline_execution_receipts],
                 "recovery": [self._public_receipt(item) for item in self.recovery_execution_receipts],
             },
+            "persistence": {
+                "provider": self.store.provider_name,
+                "durable": self.store.durable,
+                "project": self.store.project_id,
+                "snapshot_persisted": True,
+                "action_receipt_committed": action_receipt is not None,
+            },
+            "action_receipt": (
+                {
+                    "side_effect_key": action_receipt.side_effect_key,
+                    "payload_digest": action_receipt.payload_digest,
+                    "committed_at": action_receipt.committed_at.isoformat(),
+                }
+                if action_receipt is not None
+                else None
+            ),
             "checkpoints": [
                 {
                     "checkpoint_id": item.checkpoint_id,
@@ -355,9 +380,12 @@ class DemoRun:
                     "dependencies": list(item.dependency_checkpoint_ids),
                     "input_digests": list(item.input_digests),
                     "evidence_digests": list(item.evidence_digests),
+                    "tool_result_digests": list(item.tool_result_digests),
                     "output_digest": item.structured_output_digest,
+                    "integrity_digest": item.integrity.digest,
                     "status": item.verification_status.value,
                     "policy_version": item.policy_version,
+                    "side_effect_key": item.side_effect_key,
                     "provenance": item.provenance.model_dump(mode="json"),
                     "metadata": item.metadata,
                 }
@@ -367,6 +395,35 @@ class DemoRun:
             "events": [event.model_dump(mode="json") for event in self.events],
             "benchmark": benchmark,
         }
+
+    def durable_snapshot(self) -> dict[str, Any] | None:
+        snapshot = self.store.load_run_snapshot(self.run_id)
+        if snapshot is None:
+            return None
+        action_receipt = self._action_receipt()
+        rehydration = verify_persisted_snapshot(snapshot, action_receipt)
+        return {
+            "snapshot": snapshot,
+            "rehydration": rehydration.as_dict(),
+            "action_receipt": (
+                {
+                    "side_effect_key": action_receipt.side_effect_key,
+                    "payload_digest": action_receipt.payload_digest,
+                    "committed_at": action_receipt.committed_at.isoformat(),
+                }
+                if action_receipt is not None
+                else None
+            ),
+        }
+
+    def _action_receipt(self) -> Any:
+        action = self.engine.graph.checkpoint("publish_action")
+        if not action.side_effect_key:
+            return None
+        return self.store.get(action.side_effect_key)
+
+    def _persist_state(self) -> None:
+        self.store.save_run_snapshot(self.run_id, self.snapshot())
 
     def _execute_agent(self, checkpoint_id: str) -> AgentExecutionReceipt:
         prompt = build_agent_prompt(checkpoint_id, self._outputs)
@@ -427,7 +484,10 @@ class DemoRun:
             receipts.append(receipt)
         return max(1, (perf_counter_ns() - start) // 1_000), receipts
 
-    def _current_dependency_digests(self, checkpoint_id: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    def _current_dependency_digests(
+        self,
+        checkpoint_id: str,
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         checkpoint = self.engine.graph.checkpoint(checkpoint_id)
         input_digests = tuple(
             self.engine.graph.checkpoint(parent_id).structured_output_digest
@@ -535,15 +595,32 @@ class DemoRun:
         data: dict[str, Any] | None = None,
     ) -> None:
         self._event_seq += 1
-        self.events.append(
-            FlightEvent(
-                event_id=self._event_seq,
-                run_id=self.run_id,
-                event_type=event_type,
-                checkpoint_id=checkpoint_id,
-                message=message,
-                data=data or {},
-            )
+        event = FlightEvent(
+            event_id=self._event_seq,
+            run_id=self.run_id,
+            event_type=event_type,
+            checkpoint_id=checkpoint_id,
+            message=message,
+            data=data or {},
+        )
+        self.events.append(event)
+        self.store.append_event(event)
+        print(
+            json.dumps(
+                {
+                    "severity": "INFO",
+                    "component": "recovery_mesh_flight_recorder",
+                    "run_id": event.run_id,
+                    "event_id": event.event_id,
+                    "event_type": event.event_type.value,
+                    "checkpoint_id": event.checkpoint_id,
+                    "message": event.message,
+                    "data": event.data,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            flush=True,
         )
 
 

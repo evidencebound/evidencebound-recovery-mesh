@@ -82,11 +82,17 @@ class InMemoryRunStore:
                 if existing.payload_digest != payload_digest:
                     raise RuntimeError("idempotency key reused with different payload")
                 return SideEffectReceipt(
-                    key=key,
+                    side_effect_key=key,
                     payload_digest=payload_digest,
+                    committed_at=existing.committed_at,
                     duplicate_suppressed=True,
                 )
-            receipt = SideEffectReceipt(key=key, payload_digest=payload_digest)
+            receipt = SideEffectReceipt(
+                side_effect_key=key,
+                payload_digest=payload_digest,
+                committed_at=datetime.now(UTC),
+                duplicate_suppressed=False,
+            )
             self._receipts[key] = receipt
             return receipt
 
@@ -111,7 +117,7 @@ class FirestoreRunStore:
 
     def save_run_snapshot(self, run_id: str, snapshot: dict[str, Any]) -> None:
         document = copy.deepcopy(snapshot)
-        document["persisted_at"] = datetime.now(UTC).isoformat()
+        document["persisted_at"] = datetime.now(UTC)
         self._client.collection("recovery_mesh_runs").document(run_id).set(document)
 
     def load_run_snapshot(self, run_id: str) -> dict[str, Any] | None:
@@ -136,6 +142,7 @@ class FirestoreRunStore:
         from google.api_core.exceptions import AlreadyExists
 
         payload_digest = sha256_digest(payload)
+        committed_at = datetime.now(UTC)
         ref = self._client.collection("recovery_mesh_action_receipts").document(
             self._receipt_document_id(key)
         )
@@ -143,7 +150,7 @@ class FirestoreRunStore:
             "side_effect_key": key,
             "payload_digest": payload_digest,
             "run_id": run_id,
-            "committed_at": datetime.now(UTC).isoformat(),
+            "committed_at": committed_at,
         }
         try:
             ref.create(document)
@@ -151,12 +158,21 @@ class FirestoreRunStore:
             existing = ref.get().to_dict() or {}
             if existing.get("payload_digest") != payload_digest:
                 raise RuntimeError("idempotency key reused with different payload") from None
+            existing_time = existing.get("committed_at")
+            if not isinstance(existing_time, datetime):
+                existing_time = committed_at
             return SideEffectReceipt(
-                key=key,
+                side_effect_key=key,
                 payload_digest=payload_digest,
+                committed_at=existing_time,
                 duplicate_suppressed=True,
             )
-        return SideEffectReceipt(key=key, payload_digest=payload_digest)
+        return SideEffectReceipt(
+            side_effect_key=key,
+            payload_digest=payload_digest,
+            committed_at=committed_at,
+            duplicate_suppressed=False,
+        )
 
     def get(self, key: str) -> SideEffectReceipt | None:
         ref = self._client.collection("recovery_mesh_action_receipts").document(
@@ -169,7 +185,15 @@ class FirestoreRunStore:
         payload_digest = data.get("payload_digest")
         if not isinstance(payload_digest, str):
             return None
-        return SideEffectReceipt(key=key, payload_digest=payload_digest)
+        committed_at = data.get("committed_at")
+        if not isinstance(committed_at, datetime):
+            return None
+        return SideEffectReceipt(
+            side_effect_key=key,
+            payload_digest=payload_digest,
+            committed_at=committed_at,
+            duplicate_suppressed=False,
+        )
 
 
 def store_from_environment() -> RunStore:
@@ -238,9 +262,11 @@ def verify_persisted_snapshot(
         if action_receipt is None:
             failures.append("publish_action: verified recovery missing durable action receipt")
         else:
-            persisted_digest = snapshot.get("action_receipt", {}).get("payload_digest")
-            if persisted_digest and persisted_digest != action_receipt.payload_digest:
-                failures.append("publish_action: durable action receipt digest mismatch")
+            action_receipt_data = snapshot.get("action_receipt")
+            if isinstance(action_receipt_data, dict):
+                persisted_digest = action_receipt_data.get("payload_digest")
+                if persisted_digest and persisted_digest != action_receipt.payload_digest:
+                    failures.append("publish_action: durable action receipt digest mismatch")
 
     return RehydrationReceipt(
         trusted=not failures,

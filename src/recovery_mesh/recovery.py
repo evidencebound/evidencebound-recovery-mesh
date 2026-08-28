@@ -221,12 +221,21 @@ class RecoveryEngine:
         action = self.graph.checkpoint(checkpoint_id)
         if action.kind is not CheckpointKind.ACTION:
             raise RecoveryInvariantError("resume_action requires an ACTION checkpoint")
+
+        parent_policy_versions: set[str] = set()
         for parent_id in action.dependency_checkpoint_ids:
             parent = self.graph.checkpoint(parent_id)
             if parent.verification_status is not TrustStatus.VERIFIED:
                 raise RecoveryInvariantError(
                     f"action remains BLOCKED; dependency {parent_id} is not VERIFIED"
                 )
+            parent_policy_versions.add(parent.policy_version)
+        if len(parent_policy_versions) > 1:
+            raise RecoveryInvariantError(
+                "action remains BLOCKED; dependencies disagree on policy version"
+            )
+        verified_policy_version = next(iter(parent_policy_versions), action.policy_version)
+
         if not action.side_effect_key:
             raise RecoveryInvariantError("action has no side_effect_key")
         receipt = ledger.commit(action.side_effect_key, payload, run_id=self.graph.run_id)
@@ -239,6 +248,7 @@ class RecoveryEngine:
                     self.graph.checkpoint(parent_id).structured_output_digest
                     for parent_id in action.dependency_checkpoint_ids
                 ),
+                "policy_version": verified_policy_version,
                 "verification_status": TrustStatus.VERIFIED,
                 "verified_at": datetime.now(UTC),
             }

@@ -30,7 +30,7 @@ BUILD_SA_RESOURCE="projects/${GOOGLE_CLOUD_PROJECT}/serviceAccounts/${BUILD_SA}"
 # owner-provisioned default database is authoritative and ready before switching the runtime to
 # durable persistence.
 RECOVERY_MESH_FIRESTORE_BOOTSTRAP_MODE=verify \
-  "$(dirname "$0")/gcp-firestore-bootstrap.sh"
+  bash "$(dirname "$0")/gcp-firestore-bootstrap.sh"
 
 if [ -z "${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE:-}" ]; then
   export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(

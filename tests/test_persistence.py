@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -153,7 +153,7 @@ class _FakeSnapshot:
 
 
 class _FakeDoc:
-    def __init__(self, client: "_FakeClient", path: str) -> None:
+    def __init__(self, client: _FakeClient, path: str) -> None:
         self.client = client
         self.path = path
 
@@ -168,12 +168,12 @@ class _FakeDoc:
     def get(self) -> _FakeSnapshot:
         return _FakeSnapshot(self.client.documents.get(self.path))
 
-    def collection(self, name: str) -> "_FakeCollection":
+    def collection(self, name: str) -> _FakeCollection:
         return _FakeCollection(self.client, f"{self.path}/{name}")
 
 
 class _FakeCollection:
-    def __init__(self, client: "_FakeClient", path: str) -> None:
+    def __init__(self, client: _FakeClient, path: str) -> None:
         self.client = client
         self.path = path
 

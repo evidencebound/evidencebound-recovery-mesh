@@ -12,7 +12,7 @@ protected_curl() {
 
 firestore_receipt_count() {
   local run_id="$1"
-  local access_token query_json response_json
+  local access_token query_json query_file response_json
   access_token="$(gcloud auth print-access-token)"
   [ -n "$access_token" ] || {
     echo "BLOCKER=unable to obtain deployer access token for Firestore readback" >&2
@@ -37,13 +37,18 @@ print(json.dumps({
 }))
 PY
 )"
-  response_json="$(printf '%s' "$query_json" | curl --fail --silent --show-error \
-    --request POST \
-    --header "Authorization: Bearer ${access_token}" \
-    --header 'Content-Type: application/json' \
-    --data-binary @- \
-    "https://firestore.googleapis.com/v1/projects/${GOOGLE_CLOUD_PROJECT}/databases/(default)/documents:runQuery")"
-  unset access_token
+  query_file="$(mktemp)"
+  printf '%s' "$query_json" > "$query_file"
+  response_json="$(
+    printf 'header = "Authorization: Bearer %s"\n' "$access_token" \
+      | curl --config - --fail --silent --show-error \
+        --request POST \
+        --header 'Content-Type: application/json' \
+        --data-binary @"$query_file" \
+        "https://firestore.googleapis.com/v1/projects/${GOOGLE_CLOUD_PROJECT}/databases/(default)/documents:runQuery"
+  )"
+  rm -f "$query_file"
+  unset access_token query_json
   printf '%s' "$response_json" | python3 -c '
 import json,sys
 rows=json.load(sys.stdin)

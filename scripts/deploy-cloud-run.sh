@@ -26,6 +26,12 @@ BUILD_SA_RESOURCE="projects/${GOOGLE_CLOUD_PROJECT}/serviceAccounts/${BUILD_SA}"
 
 "$(dirname "$0")/gcp-live-preflight.sh"
 
+# Normal CI deploys do not provision Firestore or mutate project IAM. They only verify that the
+# owner-provisioned default database is authoritative and ready before switching the runtime to
+# durable persistence.
+RECOVERY_MESH_FIRESTORE_BOOTSTRAP_MODE=verify \
+  "$(dirname "$0")/gcp-firestore-bootstrap.sh"
+
 if [ -z "${RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE:-}" ]; then
   export RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE="$(
     gcloud secrets versions access "$JUDGE_SECRET_VERSION" \
@@ -59,7 +65,7 @@ gcloud run deploy "$SERVICE" \
   --memory 512Mi \
   --cpu 1 \
   --timeout 300 \
-  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},GOOGLE_CLOUD_LOCATION=${VERTEX_LOCATION},RECOVERY_MESH_MODEL=${MODEL},RECOVERY_MESH_EXECUTION_MODE=google_adk,RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET=${LIVE_MODEL_CALL_BUDGET}" \
+  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},GOOGLE_CLOUD_LOCATION=${VERTEX_LOCATION},RECOVERY_MESH_MODEL=${MODEL},RECOVERY_MESH_EXECUTION_MODE=google_adk,RECOVERY_MESH_LIVE_MODEL_CALL_BUDGET=${LIVE_MODEL_CALL_BUDGET},RECOVERY_MESH_PERSISTENCE_MODE=firestore" \
   --update-secrets "RECOVERY_MESH_JUDGE_KEY=${JUDGE_SECRET_NAME}:${JUDGE_SECRET_VERSION}" \
   --labels "app=evidencebound-recovery-mesh,hackathon=all-things-agentic-2026" \
   --quiet
@@ -71,6 +77,7 @@ printf 'CLOUD_RUN_REVISION=%s\n' "$REVISION"
 printf 'RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
 printf 'BUILD_SERVICE_ACCOUNT=%s\n' "$BUILD_SA"
 printf 'LIVE_MODEL_CALL_BUDGET_PER_PROCESS=%s\n' "$LIVE_MODEL_CALL_BUDGET"
+printf 'PERSISTENCE_MODE=firestore\n'
 printf 'JUDGE_ACCESS=SECRET_MANAGER_PROTECTED\n'
 "$(dirname "$0")/smoke-cloud-run.sh" "$URL"
 unset RECOVERY_MESH_JUDGE_KEY_FOR_SMOKE

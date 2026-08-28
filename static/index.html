@@ -6,6 +6,7 @@
   <title>EvidenceBound Recovery Mesh</title>
   <link rel="stylesheet" href="/static/styles.css" />
   <link rel="stylesheet" href="/static/judge.css" />
+  <link rel="stylesheet" href="/static/durable.css" />
 </head>
 <body>
   <main class="shell">
@@ -88,6 +89,19 @@
       <article class="metric"><span>Reusable</span><strong id="reusableCount">0</strong></article>
     </section>
 
+    <section id="durableLedger" class="panel durable-panel" aria-label="Durable trust ledger proof">
+      <div class="panel-head">
+        <div><span class="eyebrow">DURABLE TRUST LEDGER</span><h2>Persisted state is re-verified, never auto-trusted</h2></div>
+      </div>
+      <div class="durable-grid">
+        <article class="durable-proof"><span>Persistence</span><strong id="persistenceProvider" class="durable-value neutral">CHECKING…</strong></article>
+        <article class="durable-proof"><span>Run checkpoint state</span><strong id="persistedState" class="durable-value neutral">NO RUN</strong></article>
+        <article class="durable-proof"><span>Irreversible action receipt</span><strong id="actionReceiptState" class="durable-value neutral">NO RECEIPT</strong></article>
+        <article class="durable-proof"><span>Rehydration trust gate</span><strong id="rehydrationState" class="durable-value neutral">NOT CHECKED</strong></article>
+      </div>
+      <p class="durable-note">The UI reads the protected durable-run API. BLOCKED must mean no committed action receipt; recovery resumes only after deterministic re-verification.</p>
+    </section>
+
     <section class="layout">
       <article class="panel graph-panel">
         <div class="panel-head">
@@ -122,5 +136,6 @@
     </section>
   </main>
   <script src="/static/app.js"></script>
+  <script src="/static/durable.js"></script>
 </body>
 </html>

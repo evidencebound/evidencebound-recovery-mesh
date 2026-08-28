@@ -287,6 +287,8 @@ def verify_persisted_snapshot(
         for event in snapshot.get("events", [])
     )
     action = checkpoints.get("publish_action")
+    if action is not None and action.get("status") == "BLOCKED" and action_receipt is not None:
+        failures.append("publish_action: BLOCKED state has an unexpected durable receipt")
     if recovery_completed and action is not None and action.get("status") == "VERIFIED":
         if action_receipt is None:
             failures.append("publish_action: verified recovery missing durable action receipt")

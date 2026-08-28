@@ -7,7 +7,9 @@ MODE="${RECOVERY_MESH_FIRESTORE_BOOTSTRAP_MODE:-verify}"
 FIRESTORE_LOCATION="${RECOVERY_MESH_FIRESTORE_LOCATION:-${GOOGLE_CLOUD_RUN_REGION:-europe-west1}}"
 DATABASE_ID="${RECOVERY_MESH_FIRESTORE_DATABASE:-'(default)'}"
 RUNTIME_SA_NAME="${RECOVERY_MESH_RUNTIME_SA:-recovery-mesh-runtime}"
+DEPLOYER_SA_NAME="${RECOVERY_MESH_DEPLOYER_SA:-recovery-mesh-deployer}"
 RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+DEPLOYER_SA="${DEPLOYER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 EXPECTED_PROJECT_ID="${RECOVERY_MESH_EXPECTED_PROJECT_ID:-evidencebound-rm-c977c1}"
 
 command -v gcloud >/dev/null || {
@@ -43,9 +45,18 @@ if [ "$MODE" = "provision" ]; then
       --quiet
   fi
 
+  # Runtime gets only the data-plane role required by Recovery Mesh persistence.
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member "serviceAccount:${RUNTIME_SA}" \
     --role roles/datastore.user \
+    --condition=None \
+    --quiet >/dev/null
+
+  # GitHub deployer gets metadata read only so ordinary deploys can verify the database
+  # before enabling Firestore mode. It cannot create databases or mutate Firestore data.
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member "serviceAccount:${DEPLOYER_SA}" \
+    --role roles/datastore.viewer \
     --condition=None \
     --quiet >/dev/null
 fi
@@ -91,9 +102,12 @@ PY
 
 printf 'FIRESTORE_DATABASE=READY\n'
 printf 'FIRESTORE_RUNTIME_SERVICE_ACCOUNT=%s\n' "$RUNTIME_SA"
+printf 'FIRESTORE_DEPLOYER_SERVICE_ACCOUNT=%s\n' "$DEPLOYER_SA"
 if [ "$MODE" = "provision" ]; then
   printf 'FIRESTORE_RUNTIME_IAM=READY\n'
+  printf 'FIRESTORE_DEPLOYER_IAM=READ_ONLY_READY\n'
 else
   printf 'FIRESTORE_RUNTIME_IAM=DEFERRED_TO_LIVE_DATA_PLANE_CHECK\n'
+  printf 'FIRESTORE_DEPLOYER_IAM=READ_ONLY_VERIFIED\n'
 fi
 printf 'FIRESTORE_BOOTSTRAP_MODE=%s\n' "$MODE"

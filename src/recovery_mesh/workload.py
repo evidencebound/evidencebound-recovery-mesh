@@ -62,7 +62,7 @@ def baseline_source_outputs() -> dict[str, Any]:
             "evidence_ids": ["statistician", "scout", "skeptic"],
             "confidence": 0.64,
         },
-        "publish_action": {"published": True},
+        "publish_action": {"state": "eligible_not_committed"},
     }
 
 

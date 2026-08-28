@@ -23,12 +23,13 @@ TRUST BREAK
 
 The Flight Recorder renders this sequence from real runtime state. Gemini can reason and produce bounded structured output, but it cannot mark checkpoints VERIFIED, choose the blast radius, override provenance/policy checks, or authorize the final action.
 
-## Current production deployment — 2026-08-15
+## Current production deployment — 2026-08-28
 
 | Gate | Receipt |
 |---|---|
 | Cloud Run | `PASS` |
-| Current revision | `evidencebound-recovery-mesh-00005-82k` |
+| Current revision | `evidencebound-recovery-mesh-00006-tc4` |
+| Live acceptance workflow | `32817763402` |
 | Vertex AI | `gemini-3.5-flash` |
 | Google agent framework | ADK `2.7.0` |
 | Google Agent Registry | `PASS` — fleet entry point registered + read-only Agent discovery verified |
@@ -41,27 +42,32 @@ The Flight Recorder renders this sequence from real runtime state. Gemini can re
 | Reused work | `scout` preserved |
 | Selective recovery | `3` agents rerun, `1` agent reused |
 | Final action | `VERIFIED` |
-| Current revision smoke run | `run-439f7d87c2a3` |
+| Current acceptance run | `run-6d1427ccb2ca` |
 
-The current revision's deployment smoke measured:
-
-```text
-Full restart:        4 model calls / 1728 input tokens
-Selective recovery: 3 model calls / 1393 input tokens
-Saved:               1 model call / 335 input tokens (~19%)
-```
-
-### Reference acceptance benchmark
-
-The earlier production acceptance run `run-4707af5a2fb6` measured:
+The current production acceptance measured:
 
 ```text
-Full restart:        4 model calls / 1781 input tokens
-Selective recovery: 3 model calls / 1358 input tokens
-Saved:               1 model call / 423 input tokens (~24%)
+Full restart:        4 model calls / 1739 input tokens
+Selective recovery: 3 model calls / 1388 input tokens
+Saved:               1 model call / 351 input tokens (~20%)
 ```
 
-Both are controlled-run measurements, not general savings claims. Token counts vary across live Gemini executions; the Flight Recorder therefore displays each run's actual receipt rather than a hard-coded percentage.
+This is a controlled-run measurement for `run-6d1427ccb2ca`, not a general savings claim. Token counts vary across live Gemini executions; the Flight Recorder therefore displays each run's actual receipt rather than a hard-coded percentage.
+
+### Video V2 continuous-capture receipt
+
+The Video V2 hands-off capture is a separate live run and is intentionally kept distinct from the newer production acceptance above:
+
+```text
+Capture run:         run-06fdaf68fdff
+Full restart:        4 model calls / 1744 input tokens
+Selective recovery: 3 model calls / 1366 input tokens
+Saved:               1 model call / 378 input tokens (~22%)
+Capture mode:        HANDS_OFF_STAGED_AUTORUN
+Route:               ?autorun=stale_evidence&recover=1
+```
+
+The captured live segment is one continuous 24.08-second execution. It shows the same production contracts: verified baseline, controlled trust break, exact blast radius, blocked action, unaffected Scout reuse, affected-branch recomputation, and verified recovery.
 
 ### Verified Agent Registry receipt
 
@@ -85,17 +91,25 @@ Hosted Flight Recorder:
 https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/
 ```
 
-Fastest judge path:
+Fastest judge path — hands-off Proof of Action:
+
+```text
+https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evidence&recover=1
+```
+
+The action APIs are protected. Enter the private testing key supplied in the Devpost judge-only instructions. The browser keeps it only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
+
+After unlock, **no human recovery action is required**. The hands-off route creates a fresh live Google ADK / Gemini baseline, injects the controlled stale-evidence fault through the same production API, freezes the unsafe action, computes the exact repair set, and calls selective recovery automatically. The graph visibly progresses through `history_snapshot · TRUST BREAK`, the contaminated branch, `publish_action = BLOCKED`, `scout · REUSED`, affected-branch recomputation, and final `VERIFIED` recovery.
+
+Manual inspection route:
 
 ```text
 https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evidence
 ```
 
-The action APIs are protected. Enter the private testing key supplied in the Devpost judge-only instructions. The browser keeps it only in tab-scoped `sessionStorage` and sends it as `X-Recovery-Mesh-Judge-Key`.
+The manual route intentionally pauses in the blocked incident state so a judge can inspect the blast radius before clicking **3 · Autonomous selective recovery**. The hands-off route is the preferred autonomy proof because the operator neither selects the repair set nor triggers recovery after the fault is introduced.
 
-After unlock, the autorun URL creates a **fresh live Google ADK / Gemini baseline** and injects the controlled stale-evidence fault through the same production API. The graph then shows `history_snapshot · TRUST BREAK`, the exact contaminated branch, blocked `publish_action`, and `scout · REUSED`. Click **Autonomous selective recovery** to rerun only the affected branch and produce the measured recovery receipt.
-
-Historical production run IDs above are audit receipts, but run objects are intentionally process-local in this bounded demo. They are **not** presented as durable permalinks after Cloud Run scales to zero. Judges should use the fresh autorun path above for reproducible live verification.
+Historical production run IDs above are audit receipts, but run objects are intentionally process-local in this bounded demo. They are **not** presented as durable permalinks after Cloud Run scales to zero. Judges should use the fresh hands-off route above for reproducible live verification.
 
 Detailed judge steps: [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md).
 

@@ -50,3 +50,19 @@ def test_recovered_graph_keeps_causal_break_and_reuse_visible() -> None:
     assert "REUSED" in app_js
     assert "historical-break" in app_js
     assert ".node.historical-break" in judge_css
+
+
+def test_durable_trust_ledger_has_explicit_judge_proof_surface() -> None:
+    html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert 'id="durableLedger"' in html
+    assert 'id="persistenceProvider"' in html
+    assert 'id="persistedState"' in html
+    assert 'id="actionReceiptState"' in html
+    assert 'id="rehydrationState"' in html
+    assert "DURABLE TRUST LEDGER" in html
+    assert "renderDurableProof" in app_js
+    assert "`/api/durable-runs/${run.run_id}`" in app_js
+    assert "ACTION BLOCKED · NO RECEIPT" in app_js
+    assert "REHYDRATED · TRUST VALIDATED" in app_js

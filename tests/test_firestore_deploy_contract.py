@@ -13,7 +13,8 @@ def test_firestore_bootstrap_is_idempotent_and_least_privilege() -> None:
     assert "--edition=standard" in text
     assert "--type=firestore-native" in text
     assert "roles/datastore.user" in text
-    assert "recovery-mesh-runtime@" in text
+    assert "recovery-mesh-runtime" in text
+    assert "iam.gserviceaccount.com" in text
     assert "FIRESTORE_DATABASE=READY" in text
     assert "FIRESTORE_RUNTIME_IAM=READY" in text
 

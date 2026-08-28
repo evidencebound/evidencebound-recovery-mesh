@@ -2,49 +2,51 @@
 
 Canonical project: **EvidenceBound Recovery Mesh**  
 Category: **Fortified Enterprise Fleet**  
-Project start answer: **08-14-26**  
 Devpost project: `evidencebound-recovery-mesh`  
 Submission ID: `1136853`
 
-> Current-state document. A field is listed as implemented/used only when backed by repository, production, or Devpost evidence.
+> Current-state document. A field is listed as implemented/used only when backed by repository, production, or live Devpost evidence.
 
-## Final submission state
+## Current submission state — 2026-08-28
 
 | Devpost field | Submitted answer / state | Evidence status |
 |---|---|---|
 | Submitter Type | `Team of individuals` | SUBMITTED |
 | Country | `Ukraine` | SUBMITTED |
 | Category | `Fortified Enterprise Fleet` | SUBMITTED |
-| Startup Prize organization/email | blank | INTENTIONALLY NOT CLAIMED; submission is not on behalf of an incorporated organization |
-| Public code repository | `https://github.com/moneyparking/evidencebound-recovery-mesh` | PASS |
+| Startup Prize organization/email | blank | INTENTIONALLY NOT CLAIMED |
+| Public code repository | `https://github.com/evidencebound/evidencebound-recovery-mesh` | LIVE / READ BACK |
 | Reproducible README | `Yes` | PASS |
-| Hosted project URL | `https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/` | LIVE |
-| Private judge testing instructions | private Devpost field + public detailed runbook | OWNER-VISIBLE; credential must remain private |
+| Hosted project URL | `https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/` | LIVE / VERIFIED BY CURRENT ACCEPTANCE |
+| Preferred judge route | `?autorun=stale_evidence&recover=1` | HANDS-OFF / VERIFIED |
+| Private judge testing instructions | private Devpost field + public detailed runbook | OWNER-VISIBLE; credential remains private |
 | Google SDK | `Agent Development Kit (ADK)` | LIVE / VERIFIED |
 | Google Cloud service answer | `Cloud Run` | LIVE / VERIFIED |
 | Google AI model | `Gemini 3.5 Flash via Vertex AI` | LIVE / VERIFIED |
 | Architecture diagram | Architecture Diagram v2 | UPLOADED / VERIFIED AGAINST CURRENT ARCHITECTURE |
-| Demo video | `https://youtu.be/AExuVCC-m7o` | PUBLIC / SUBMITTED |
+| Demo video | `https://youtu.be/AExuVCC-m7o` | V1 PUBLIC / CURRENT DEVPOST VIDEO |
+| Video V2 | 75.080 s publication-ready master | LOCAL ASSEMBLY VERIFIED / PUBLICATION PENDING |
 | Bonus technical article | DEV.to URL supplied in Devpost | SUBMITTED |
 | Bonus social post | LinkedIn URL with `#AllThingsAgenticHackathon` | SUBMITTED |
 
-The Devpost gallery images are presentation assets rather than runtime evidence; they must not introduce capabilities that are absent from the live system.
+The Devpost gallery images are presentation assets rather than runtime evidence; they must not introduce capabilities absent from the live system.
 
 ## Current production evidence
 
-Production service:
-
 ```text
-Project: evidencebound-rm-c977c1
-Cloud Run revision: evidencebound-recovery-mesh-00005-82k
-Hosted URL: https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/
-Health endpoint: /health
-Provider: google_adk_vertex
-Model: gemini-3.5-flash
-Google ADK: 2.7.0
+Project:              evidencebound-rm-c977c1
+Cloud Run revision:   evidencebound-recovery-mesh-00006-tc4
+Hosted URL:           https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/
+Canonical .run.app:   https://evidencebound-recovery-mesh-457699623691.europe-west1.run.app
+Health endpoint:      /health
+Provider:             google_adk_vertex
+Model:                gemini-3.5-flash
+Google ADK:           2.7.0
+Acceptance workflow:  32817763402
+Acceptance run:       run-6d1427ccb2ca
 ```
 
-Verified judge path:
+Verified hands-off judge path:
 
 ```text
 4 live ADK agents
@@ -57,35 +59,30 @@ FINAL ACTION: VERIFIED
 
 Protected production API evidence includes unauthenticated `POST /api/runs -> 401` before model execution.
 
-## Measured receipts
-
-Current submission-ready revision smoke:
+## Current measured production receipt
 
 ```text
-Full restart:        4 model calls / 1728 input tokens
-Selective recovery: 3 model calls / 1393 input tokens
-Saved:               1 model call / 335 input tokens (~19%)
+Run:                 run-6d1427ccb2ca
+Full restart:        4 model calls / 1739 input tokens
+Selective recovery: 3 model calls / 1388 input tokens
+Saved:               1 model call / 351 input tokens (~20%)
 ```
 
-Fresh browser/video capture:
+These values belong only to that controlled production run and are not a universal savings claim.
+
+## Video V2 capture receipt — separate evidence class
 
 ```text
-Run:                 run-72e5ad9cd0e8
-Full restart:        4 model calls / 1788 input tokens
-Selective recovery: 3 model calls / 1427 input tokens
-Saved:               1 model call / 361 input tokens (20%)
+Capture run:         run-06fdaf68fdff
+Mode:                HANDS_OFF_STAGED_AUTORUN
+Full restart:        4 model calls / 1744 input tokens
+Selective recovery: 3 model calls / 1366 input tokens
+Saved:               1 model call / 378 input tokens (~22%)
+Continuous segment:  24.080 s / 602 frames
+Frame equality:      PASS — 602 / 602 preserved in assembled WebM
 ```
 
-Reference production acceptance:
-
-```text
-Run:                 run-4707af5a2fb6
-Full restart:        4 model calls / 1781 input tokens
-Selective recovery: 3 model calls / 1358 input tokens
-Saved:               1 model call / 423 input tokens (~24%)
-```
-
-These are controlled-run measurements, not universal savings claims. Gemini token usage varies across runs.
+Capture metrics are intentionally kept separate from the newer production acceptance receipt.
 
 ## Verified Google Agent Registry evidence
 
@@ -117,8 +114,8 @@ The live submission uses a bounded process-local hot store. It does **not** clai
 - durable exactly-once semantics across process restart;
 - 100 live Gemini agents in the synthetic scale probe.
 
-## Remaining owner-visible presentation item
+## Remaining publication gate
 
-The invited teammate must accept the Devpost project invite and appear in the project roster before the end of the submission period if the project is presented as a team submission.
+Do **not** replace the current Devpost V1 video until Video V2 is publicly uploaded to YouTube/Vimeo, opens without owner authentication, and the Devpost project readback shows the exact new URL.
 
-Everything else in this matrix describes the current submitted/verified state, not the earlier bootstrap plan.
+The canonical repository URL and current Devpost description have already been read back as current. Team-roster acceptance remains a separate owner-visible field and must not be inferred from repository or runtime evidence.

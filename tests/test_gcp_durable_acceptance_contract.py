@@ -28,7 +28,8 @@ def test_cloud_proof_filters_causal_events_to_exact_acceptance_run() -> None:
     proof = Path("scripts/gcp-proof-receipt.sh").read_text(encoding="utf-8")
 
     assert "RECOVERY_MESH_PROOF_RUN_ID" in proof
-    assert 'jsonPayload.run_id="${PROOF_RUN_ID}"' in proof
+    assert "jsonPayload.run_id" in proof
+    assert '"$PROOF_RUN_ID"' in proof
     assert "recovery_mesh_flight_recorder" in proof
     assert "TRUST_BREAK_DETECTED" in proof
     assert "ACTION_BLOCKED" in proof

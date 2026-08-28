@@ -65,7 +65,9 @@ class InMemoryRunStore:
 
     def append_event(self, event: FlightEvent) -> None:
         with self._lock:
-            self._events.setdefault(event.run_id, {})[event.event_id] = event.model_dump(mode="json")
+            self._events.setdefault(event.run_id, {})[event.event_id] = event.model_dump(
+                mode="json"
+            )
 
     def commit(
         self,

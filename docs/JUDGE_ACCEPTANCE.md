@@ -1,32 +1,39 @@
 # Judge acceptance gate
 
-Status as of 2026-08-28: **CORE PRODUCTION ACCEPTANCE SATISFIED / VIDEO V2 PUBLICATION PENDING**.
+Status as of 2026-08-28: **FORTIFIED CORE PRODUCTION ACCEPTANCE SATISFIED / FINAL PUBLIC VIDEO UPDATE PENDING**.
 
-This file records the acceptance standard and the evidence class that satisfies it. It separates current production acceptance from the remaining public-video publication gate.
+This file records only evidence that has been observed from the current production revision or from executable repository verification. It intentionally separates live Google Cloud proof from diagrams, local tests, historical receipts, and still-unverified enterprise extensions.
 
 ## Accepted production evidence
 
 The current public repository contains the hackathon implementation, disclosure, reproducible README, tests, architecture documentation, and green CI on `main`.
 
-Production evidence verifies:
+Production evidence now verifies:
 
 - Gemini 3.5 Flash is invoked with real Google credentials through Vertex AI;
 - execution provider is `google_adk_vertex` with Google ADK `2.7.0`;
-- the hosted deployment is Cloud Run revision `evidencebound-recovery-mesh-00006-tc4`;
+- the hosted deployment is Cloud Run revision `evidencebound-recovery-mesh-00007-bjm`;
 - public health endpoint is `/health`;
+- the live health receipt reports `persistence.provider=firestore` and `durable=true`;
+- the canonical Firestore `(default)` database is verified in `europe-west1`;
+- Firestore persists Recovery Mesh run snapshots, Flight Recorder events, and idempotent action receipts through the Durable Trust Ledger adapter;
+- persisted state is deterministically revalidated before it can become trusted state;
 - Secret Manager contains the dedicated judge credential while the value remains absent from source/public receipts;
 - unauthenticated `POST /api/runs` returns `401` before model execution;
 - four specialized live ADK roles participate in the baseline;
 - controlled `stale_evidence` invalidates `history_snapshot`;
 - exact dependency traversal blocks `publish_action` and preserves `scout`;
-- the preferred `?autorun=stale_evidence&recover=1` path performs recovery without a human selecting the repair set or triggering recovery after the fault;
-- autonomous selective recovery reruns only Statistician, Skeptic, and Orchestrator;
+- while the action is BLOCKED, Firestore contains zero side-effect receipts for that run;
+- autonomous selective recovery reruns only Statistician, Skeptic, and Orchestrator while Scout is reused;
 - recomputed checkpoints are deterministically re-verified;
 - `publish_action` resumes only after dependency trust passes;
-- duplicate side effects remain idempotency-protected within the current process-local ledger boundary;
+- after verified recovery, Firestore contains exactly one durable action receipt for that run;
+- the same persisted run can be rehydrated only after trust validation;
 - benchmark receipts compare actual full-restart and selective-recovery paths;
 - Flight Recorder shows the six-step causal sequence from runtime state;
-- Workload Identity Federation is used for keyless GitHub deployment rather than a service-account key;
+- a separate read-only auditor identity queries Google Cloud Logging for the exact acceptance `run_id`;
+- Cloud Logging contains `TRUST_BREAK_DETECTED`, `BLAST_RADIUS_COMPUTED`, `ACTION_BLOCKED`, `CHECKPOINT_REUSED`, recompute/reverification, `ACTION_RESUMED`, and `RECOVERY_COMPLETED` for that same run;
+- Workload Identity Federation is used for keyless GitHub deployment/audit rather than service-account keys;
 - Google Agent Registry contains a discoverable Recovery Mesh fleet entry point;
 - README, Devpost description, judge instructions, and current production receipts describe the same bounded system.
 
@@ -41,44 +48,84 @@ TRUST BREAK
   -> VERIFIED RECOVERY
 ```
 
-## Current production acceptance receipt
+## Current fortified production receipt
 
 ```text
-Workflow:             32817763402
-Revision:             evidencebound-recovery-mesh-00006-tc4
-Run:                  run-6d1427ccb2ca
-Provider / model:     google_adk_vertex / gemini-3.5-flash
-Live agents:          4
-Trust break:          publish_action BLOCKED
-Unaffected work:      Scout REUSED
-Selective recovery:  3 rerun / 1 reused
-Full restart:         4 model calls / 1739 input tokens
-Selective recovery:  3 model calls / 1388 input tokens
-Saved in that run:    1 model call / 351 input tokens (~20%)
-Final action:         VERIFIED
-Unauthenticated POST: 401
+Deployment workflow:    33196157041 — SUCCESS
+Acceptance workflow:    33196523402 — SUCCESS
+Revision:               evidencebound-recovery-mesh-00007-bjm
+Acceptance run:         run-4f1eba151be7
+Provider / model:       google_adk_vertex / gemini-3.5-flash
+Persistence:            firestore / durable=true
+Live agents:            4
+Trust break:            history_snapshot / STALE_EVIDENCE
+Unsafe action:          publish_action BLOCKED
+Blocked receipt count:  0
+Unaffected work:        Scout REUSED
+Selective recovery:     3 rerun / 1 reused
+Recovered receipt count: 1
+Rehydration:            trusted only after validation
+Full restart:           4 model calls / 1707 input tokens
+Selective recovery:     3 model calls / 1432 input tokens
+Saved in that run:      1 model call / 275 input tokens (~16.1%)
+Final action:            VERIFIED
+Unauthenticated POST:   401
+Exact-run Cloud Logging: PASS
+GCP proof receipt:       PASS
 ```
 
-These are controlled-run measurements, not universal savings claims.
+These are controlled-run measurements for `run-4f1eba151be7`, not universal savings claims. Gemini token usage varies across live executions.
 
-## Video V2 evidence class
+Canonical receipt: [`FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md`](FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md).
 
-Video V2 uses a different live capture run and does not mix its metrics with the current acceptance receipt:
+## Exact-run Cloud Logging evidence
+
+The `cloud-proof` job in workflow `33196523402` authenticated as the separate auditor identity and queried Cloud Logging for the same `run-4f1eba151be7` generated by the live judge job.
+
+Observed result:
 
 ```text
-Capture run:          run-06fdaf68fdff
-Capture mode:         HANDS_OFF_STAGED_AUTORUN
-Full restart:         4 model calls / 1744 input tokens
-Selective recovery:  3 model calls / 1366 input tokens
-Saved in that run:    1 model call / 378 input tokens (~22%)
-Continuous segment:   24.080 s / 602 frames
-Frame equality:       PASS — 602 / 602 preserved in assembled WebM
-Final state:          VERIFIED
+EXACT_RUN_CLOUD_LOGGING=PASS run_id=run-4f1eba151be7
+GCP_PROOF_RECEIPT=PASS
 ```
 
-The assembled V2 master is `75.080 s`, 1920×1080, and under the four-minute limit. Its local assembly is verified, but it is **not** claimed as the public submission video until a public YouTube/Vimeo URL exists and Devpost readback confirms it.
+The log excerpt contains the causal runtime events rather than inferred labels:
 
-Current public Devpost video remains V1: `https://youtu.be/AExuVCC-m7o`.
+```text
+TRUST_BREAK_DETECTED
+BLAST_RADIUS_COMPUTED
+ACTION_BLOCKED
+CHECKPOINT_REUSED
+RECOMPUTE_STARTED
+CHECKPOINT_REVERIFIED
+ACTION_RESUMED
+RECOVERY_COMPLETED
+```
+
+This closes the production audit-evidence gap without claiming that Cloud Logging itself makes trust decisions. Recovery Mesh deterministic code remains the trust authority; Cloud Logging is the verified external audit surface.
+
+## Durable Trust Ledger acceptance
+
+The live production smoke produced both sides of the fail-closed receipt invariant:
+
+```text
+FIRESTORE_BLOCKED_RECEIPT_COUNT=PASS count=0 run_id=run-4f1eba151be7
+DURABLE_BLOCKED=PASS action=BLOCKED receipt=absent persisted_trust=validated
+DURABLE_RECOVERY=PASS receipt=present rehydration=trusted
+FIRESTORE_RECOVERED_RECEIPT_COUNT=PASS count=1 run_id=run-4f1eba151be7
+```
+
+Firestore persistence does not become trust authority. A stored checkpoint must still pass dependency/input digest, integrity, provenance and active-policy checks before reuse.
+
+This exact production acceptance did **not** deliberately kill a Cloud Run instance between write and replay. Repository crash/restart semantics are covered by executable tests, while the live receipt proves the active Firestore data path, durable receipt cardinality, and deterministic rehydration gate on revision `00007-bjm`.
+
+## Video evidence class
+
+The current public Devpost video remains V1: `https://youtu.be/AExuVCC-m7o`.
+
+The previously assembled 75.080-second V2 package is a historical local artifact and predates the now-live Firestore/Cloud Logging proof. The next public video should therefore use current revision `00007-bjm` and include real Google Cloud terminal/console evidence rather than presenting the older generic cloud-proof card as the final production state.
+
+The public video is not considered updated until a new YouTube/Vimeo URL opens without owner authentication and Devpost readback confirms the exact URL.
 
 ## Agent Registry acceptance
 
@@ -92,7 +139,7 @@ Agent: projects/457699623691/locations/global/agents/agentregistry-00000000-0000
 AGENT_REGISTRY_DISCOVERY=PASS
 ```
 
-The Registry receipt is production control-plane evidence from 2026-08-15. It is not presented as a new 2026-08-28 registration.
+The Registry receipt is production control-plane evidence from 2026-08-15. It is not presented as a new 2026-08-28 registration, and Registry catalog/discovery cannot override Recovery Mesh trust state.
 
 ## Evidence-class discipline
 
@@ -101,27 +148,23 @@ The following remain separate evidence classes and are not substituted for each 
 - deterministic/local tests do not prove live Gemini execution;
 - the 100-checkpoint synthetic scale probe does not prove 100 live Gemini calls;
 - a diagram does not prove a Google integration;
-- an authenticated workflow receipt is not represented as a Google Cloud Console screenshot;
-- persisted state would not automatically become trusted state;
+- Firestore persistence does not make persisted state automatically trusted;
+- Cloud Logging proves audit observability, not trust authority;
 - Agent Registry catalog/discovery does not authorize Recovery Mesh trust state;
-- V2 local verification does not prove public YouTube/Vimeo publication.
+- a local video artifact does not prove public YouTube/Vimeo publication.
 
-## Known limitation / non-claims
+## Current non-claims
 
-Core acceptance does **not** mean the submission demonstrates every recommended Fortified Enterprise Platform component.
+The submission does **not** claim without separate evidence:
 
-The live deployment still uses process-local hot state and therefore does not claim:
-
-- durable multi-week context;
-- Firestore persistence;
 - BigQuery export;
 - Agent Runtime;
 - Memory Bank;
 - Model Armor;
-- restart-surviving exactly-once semantics.
-
-Those limitations are intentional truth boundaries, not hidden PASS claims.
+- universal token/cost savings;
+- a forced Cloud Run instance-kill production replay proving restart-surviving exactly-once behavior;
+- that Google services, rather than Recovery Mesh deterministic contracts, detected or resolved the trust break.
 
 ## Remaining gate
 
-The only submission-media gate in this document is public Video V2 publication and Devpost readback. Until that occurs, V1 remains the truthful public video of record.
+The remaining submission-media gate is the new public proof video and Devpost video readback. Core Fortified production acceptance is otherwise backed by current revision `00007-bjm`, Firestore durable data-plane evidence, and exact-run Google Cloud Logging proof.

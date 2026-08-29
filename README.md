@@ -25,6 +25,24 @@ TRUST BREAK
 
 Gemini can reason and produce bounded structured output, but it cannot mark checkpoints `VERIFIED`, choose the blast radius, override provenance/integrity/policy checks, trust persisted state merely because it exists, or authorize the final action.
 
+**Final public judge video:** https://youtu.be/3OtS17yf-Xo
+
+## Twist / what is novel
+
+Recovery Mesh treats **trust itself as a repairable dependency graph**. Instead of choosing between “restart everything” and “continue from contaminated state,” it computes a deterministic minimal repair set, preserves checkpoints that still verify, and reruns only the affected branch.
+
+Three additional boundaries make that useful for enterprise fleets:
+
+- **persisted state is not trusted state** — Firestore durability never bypasses revalidation;
+- **fail-closed durable side effects** — production proves `0` receipts while BLOCKED and exactly `1` after verified recovery;
+- **model/authority separation** — Gemini reasons, while deterministic Recovery Mesh code owns trust state, blast radius, policy and action authorization.
+
+The same `run_id` binds the Flight Recorder, Firestore state and independently queried Google Cloud Logging evidence.
+
+### Unlikely Hero workload
+
+The judge workload models a **football performance / match-intelligence operations analyst** whose autonomous fleet must not publish a recommendation derived from stale, malformed or policy-invalid evidence. The workload uses safe controlled fixture/history/policy data; it does not claim live sports-provider truth or copy SignalReview production source.
+
 ## Current fortified production deployment — 2026-08-28
 
 | Gate | Current receipt |
@@ -303,13 +321,15 @@ It does **not** claim without separate evidence:
 
 ## Video status
 
-Current Devpost video remains V1:
+Final public judge video:
 
 ```text
-https://youtu.be/AExuVCC-m7o
+https://youtu.be/3OtS17yf-Xo
 ```
 
-The next public proof video should show current revision `00007-bjm` and real Google Cloud terminal/console evidence for Cloud Run, Firestore and exact-run Cloud Logging. Devpost is not considered video-updated until the new public URL is read back successfully.
+Devpost live project readback on 2026-08-29 confirms this exact URL as the submitted video. The final edit uses current revision `00007-bjm` and real Google Cloud / Cloud Shell evidence for Cloud Run, Firestore and exact-run Cloud Logging.
+
+The previous V1 video is historical evidence only and is no longer the Devpost video of record.
 
 ## New-project disclosure
 
@@ -323,7 +343,7 @@ This is a new isolated project created during the August 2026 submission period.
 - [`docs/JUDGE_ACCEPTANCE.md`](docs/JUDGE_ACCEPTANCE.md) — current acceptance gates
 - [`docs/JUDGE_TESTING_INSTRUCTIONS.md`](docs/JUDGE_TESTING_INSTRUCTIONS.md) — reproducible judge flow
 - [`docs/DEVPOST_SUBMISSION_MATRIX.md`](docs/DEVPOST_SUBMISSION_MATRIX.md) — submission evidence matrix
-- [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — recording plan
+- [`docs/PROOF_OF_ACTION_VIDEO.md`](docs/PROOF_OF_ACTION_VIDEO.md) — final public video receipt
 
 ## Scope discipline
 

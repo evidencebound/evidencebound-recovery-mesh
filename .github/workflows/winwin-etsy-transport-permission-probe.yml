@@ -1,0 +1,61 @@
+name: WINwin Etsy transport permission probe
+
+on:
+  push:
+    branches:
+      - ops/winwin-etsy-transport-permission-probe-20260824
+    paths:
+      - .github/workflows/winwin-etsy-transport-permission-probe.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/winwin-etsy-transport-permission-probe.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_CLOUD_PROJECT: evidencebound-rm-c977c1
+      WORKLOAD_IDENTITY_PROVIDER: projects/457699623691/locations/global/workloadIdentityPools/github-actions/providers/recovery-mesh
+      SERVICE_ACCOUNT: recovery-mesh-deployer@evidencebound-rm-c977c1.iam.gserviceaccount.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+
+      - name: Read provider condition and effective project roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== PROVIDER ==='
+          gcloud iam workload-identity-pools providers describe recovery-mesh \
+            --location=global \
+            --workload-identity-pool=github-actions \
+            --project="$GOOGLE_CLOUD_PROJECT" \
+            --format='yaml(name,attributeCondition,attributeMapping,state)'
+          echo '=== SERVICE ACCOUNT IAM ==='
+          gcloud iam service-accounts get-iam-policy "$SERVICE_ACCOUNT" \
+            --project="$GOOGLE_CLOUD_PROJECT" \
+            --format='yaml(bindings)'
+          echo '=== PROJECT ROLES FOR DEPLOYER ==='
+          gcloud projects get-iam-policy "$GOOGLE_CLOUD_PROJECT" \
+            --flatten='bindings[].members' \
+            --filter="bindings.members:serviceAccount:${SERVICE_ACCOUNT}" \
+            --format='table(bindings.role,bindings.members)'
+          echo 'IAM_PERMISSION_PROBE=PASS'
+          echo 'ETSY_WRITES=0'

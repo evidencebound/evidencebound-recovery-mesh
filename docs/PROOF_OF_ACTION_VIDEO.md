@@ -1,16 +1,40 @@
 # Proof-of-Action video status
 
-**Current public submission video:** V1 remains public and submitted until the new current-production proof video has a public YouTube/Vimeo URL and Devpost readback confirms it.
+**Final public submission video:**
 
-Current Devpost video of record:
+`https://youtu.be/3OtS17yf-Xo`
 
-`https://youtu.be/AExuVCC-m7o`
+Devpost project readback on 2026-08-29 confirms that exact URL as the current submitted video.
 
-The previously assembled 75.080-second Video V2 package remains a valid historical artifact for its own captured run, but it predates the now-live Firestore Durable Trust Ledger and exact-run Google Cloud Logging proof. It should therefore **not** be treated as the final strongest submission video.
+The final judge master is approximately 1:51, in English, and uses the current production truth rather than the older pre-Firestore V1/V2 receipts.
 
-## Final video target
+## What the final video proves
 
-The new public proof video should use the current production truth:
+The video is built around evidence rather than generic presentation cards:
+
+- real Recovery Mesh Flight Recorder state;
+- trust break and exact blast-radius visualization;
+- `publish_action = BLOCKED` before the unsafe side effect;
+- Scout preserved/reused while the contaminated branch is recomputed;
+- verified recovery;
+- real Google Cloud / Cloud Shell proof;
+- current Cloud Run revision `evidencebound-recovery-mesh-00007-bjm`;
+- `/health` showing `google_adk_vertex`, `gemini-3.5-flash`, `firestore`, and `durable=true`;
+- Firestore `(default)` database in `europe-west1`;
+- exact-run Google Cloud Logging evidence for the Recovery Mesh causal sequence.
+
+Judge sequence:
+
+```text
+TRUST BREAK
+  -> EXACT BLAST RADIUS
+  -> ACTION BLOCKED
+  -> SAFE WORK REUSED
+  -> AFFECTED BRANCH RECOMPUTED
+  -> VERIFIED RECOVERY
+```
+
+## Current production evidence bound to the video
 
 ```text
 Cloud Run revision:   evidencebound-recovery-mesh-00007-bjm
@@ -24,19 +48,6 @@ Exact-run Cloud Logs: PASS
 GCP proof receipt:    PASS
 ```
 
-The judge sequence remains:
-
-```text
-TRUST BREAK
-  -> EXACT BLAST RADIUS
-  -> ACTION BLOCKED
-  -> SAFE WORK REUSED
-  -> AFFECTED BRANCH RECOMPUTED
-  -> VERIFIED RECOVERY
-```
-
-## Current production receipt to show
-
 Measured values for `run-4f1eba151be7` only:
 
 ```text
@@ -49,50 +60,11 @@ Rehydration:         trusted only after deterministic validation
 Final action:        VERIFIED
 ```
 
-Do not generalize the token saving percentage beyond this run.
-
-## Real Google Cloud proof requirement
-
-The final edit should replace generic cloud-proof cards with a short real Google Cloud Console/Cloud Shell segment wherever possible.
-
-The visible proof should establish:
-
-- project `evidencebound-rm-c977c1`;
-- Cloud Run service `evidencebound-recovery-mesh`;
-- revision `evidencebound-recovery-mesh-00007-bjm`;
-- `.run.app` service URL;
-- `/health` reporting `google_adk_vertex`, `gemini-3.5-flash`, `firestore`, `durable=true`;
-- Firestore `(default)` database in `europe-west1`;
-- Cloud Logging entries for the exact Recovery Mesh causal events;
-- Google Agent Registry API/service only if the terminal output is clean and current.
-
-Never display access tokens, API keys, judge-key values, credentials files, or private payloads.
-
-## Hands-off Recovery Mesh segment
-
-The production UI route is:
-
-`https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evidence&recover=1`
-
-After the private judge key is entered and controls are unlocked, the hands-off sequence should remain continuous through:
-
-```text
-verified baseline
--> controlled stale-evidence trust break
--> exact blast radius
--> publish_action BLOCKED
--> Scout REUSED
--> affected branch recomputation
--> deterministic re-verification
--> durable action receipt commit
--> VERIFIED recovery
-```
-
-The judge must not choose the repair set.
+These are run-specific measurements, not universal savings claims.
 
 ## Firestore proof boundary
 
-The current live integration is no longer an architectural extension. Firestore is active production persistence through the Durable Trust Ledger.
+The current live integration is active production persistence through the Durable Trust Ledger.
 
 Verified live invariant:
 
@@ -102,18 +74,20 @@ DURABLE_RECOVERY=PASS receipt=present rehydration=trusted
 FIRESTORE_RECOVERED_RECEIPT_COUNT=PASS count=1
 ```
 
-Do not state that this exact acceptance forced a Cloud Run instance kill/restart. That was not part of the live run.
+Persistence is not trust authority. Recovery Mesh revalidates stored checkpoint bindings before reuse.
 
-## Cloud Logging proof boundary
+The reference production acceptance did not deliberately kill a Cloud Run instance between write and replay; the submission therefore does not claim a separate forced-instance-restart production benchmark.
 
-Workflow `33196523402` queried Google Cloud Logging under a separate read-only auditor identity for the exact same `run-4f1eba151be7` and returned:
+## Exact-run Cloud Logging proof
+
+Workflow `33196523402` queried Google Cloud Logging under a separate read-only auditor identity for the same `run-4f1eba151be7` and returned:
 
 ```text
 EXACT_RUN_CLOUD_LOGGING=PASS
 GCP_PROOF_RECEIPT=PASS
 ```
 
-The observed event sequence includes:
+Observed events include:
 
 ```text
 TRUST_BREAK_DETECTED
@@ -126,11 +100,11 @@ ACTION_RESUMED
 RECOVERY_COMPLETED
 ```
 
-This is the strongest external audit proof to include after the live UI segment.
+Cloud Logging is external audit proof; Recovery Mesh deterministic code remains the trust authority.
 
 ## Google Agent Registry boundary
 
-Historical verified control-plane receipt remains:
+Verified control-plane receipt remains:
 
 ```text
 Workflow: 31871557186
@@ -139,23 +113,17 @@ AGENT_REGISTRY_SERVICE=projects/evidencebound-rm-c977c1/locations/global/service
 AGENT_REGISTRY_DISCOVERY=PASS
 ```
 
-It is catalog/discovery only and is not a trust-authority claim.
+Agent Registry is catalog/discovery only and cannot authorize trust transitions.
 
-## Recommended final structure
+## Public judge route
 
-Target approximately 70–100 seconds, comfortably below the four-minute limit:
+`https://evidencebound-recovery-mesh-i3lzjodgra-ew.a.run.app/?autorun=stale_evidence&recover=1`
 
-1. `4–6 s` — problem + Recovery Mesh thesis;
-2. `20–35 s` — real Google Cloud Shell/Console proof for current production revision, Firestore and Cloud Logging;
-3. `24–35 s` — continuous hands-off Recovery Mesh trust-break/recovery sequence;
-4. `8–12 s` — measured selective-recovery receipt + durable `0 -> 1` action-receipt proof;
-5. `5–8 s` — close with hosted URL and Fortified Enterprise Fleet framing.
-
-Keep any live proof segment honest and unedited internally except for trimming empty lead-in/lead-out. Do not create fake terminal output, fake Google Console cards, or staged PASS screens.
+After the private judge key is entered once, no human recovery choice is required. The runtime performs the trust break, exact repair planning, selective recomputation, deterministic re-verification, durable receipt commit, and final recovery automatically.
 
 ## Explicit non-claims
 
-The final video should not claim without separate evidence:
+The final video does not claim without separate evidence:
 
 - BigQuery export;
 - Agent Runtime;
@@ -164,16 +132,5 @@ The final video should not claim without separate evidence:
 - universal savings percentages;
 - forced Cloud Run process-kill production replay proving restart-surviving exactly-once behavior;
 - separate Registry entries for each internal ADK role.
-
-## Publication gate
-
-Replace the Devpost V1 URL only after all of the following are true:
-
-1. the new H.264 MP4 is public on YouTube or Vimeo;
-2. the public URL opens without owner authentication;
-3. English subtitles or equivalent English accessibility are present;
-4. Devpost readback shows that exact new URL.
-
-Until that gate passes, V1 remains the public video of record.
 
 Canonical current receipt: [`FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md`](FORTIFIED_PRODUCTION_RECEIPT_2026-08-28.md).

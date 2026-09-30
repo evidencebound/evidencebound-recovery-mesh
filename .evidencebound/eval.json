@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "evidencebound/evidencebound-recovery-mesh",
   "policy": {
-    "development": "audit",
+    "development": "required",
     "frozen": "audit"
   },
   "bootstrap": [
